@@ -10,7 +10,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 # Uso minuscolo per un confronto più sicuro
-ADMIN_USERS = ["lady_unknow", "tuc0pacific0"] 
+ADMIN_USERS = ["@Lady_unknow", "@Tuc0Pacific0"] 
 TEMPO_RISPOSTA = 60
 
 client = MongoClient(MONGO_URI)
