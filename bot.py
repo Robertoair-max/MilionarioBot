@@ -182,13 +182,27 @@ async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- SERVER ---
 server = Flask(__name__)
+
 @server.route('/')
-def home(): return "OK", 200
+def home():
+    # Usiamo una risposta esplicita per evitare che Flask aggiunga header pesanti
+    return "OK", 200
+
+def run_flask():
+    # Legge la porta di Render o usa la 5000 di default
+    port = int(os.environ.get("PORT", 5000))
+    # use_reloader=False impedisce a Flask di sdoppiare il processo (causa dei conflitti porta)
+    server.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 if __name__ == "__main__":
-    threading.Thread(target=lambda: server.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000))), daemon=True).start()
+    # Avvio del server in un thread leggero
+    threading.Thread(target=run_flask, daemon=True).start()
+    
+    # Avvio del Bot
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin_cmd)) # <-- Comando Admin ripristinato
+    app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(callback_logic))
+    
+    # drop_pending_updates pulisce la coda all'avvio, evitando sovraccarichi
     app.run_polling(drop_pending_updates=True)
