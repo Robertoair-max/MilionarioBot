@@ -11,7 +11,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 ADMIN_USERS = ["Lady_unknow", "Tuc0Pacific0"]
-TEMPO_RISPOSTA = 60 # Portato a 60 secondi
+TEMPO_RISPOSTA = 60 
 
 client = MongoClient(MONGO_URI)
 db = client.quiz_milionario
@@ -38,7 +38,6 @@ QUESTIONS = [
 
 # --- LOGICA AIUTI ---
 def genera_percentuali_pubblico(corretta, idx):
-    # L'affidabilità scende col progredire delle domande
     prob_corretta = max(35, 85 - (idx * 4))
     altre = [k for k in ["A", "B", "C", "D"] if k != corretta]
     voti = {corretta: random.randint(int(prob_corretta), 100)}
@@ -60,20 +59,11 @@ def genera_dialogo_telefonata(corretta, idx):
     sorte = random.randint(1, 100)
     errata = random.choice([k for k in ["A", "B", "C", "D"] if k != corretta])
     if sorte <= affidabilita:
-        return random.choice([
-            f"📞 'Pronto? Sì, ciao! Guarda, ne sono quasi certo... la risposta è la *{corretta}*!'",
-            f"📞 'Ehilà! Allora, ho letto qualcosa a riguardo proprio ieri, vai tranquillo sulla *{corretta}*!'"
-        ])
+        return f"📞 'Pronto? Sì! Guarda, ne sono quasi certo... la risposta è la *{corretta}*!'"
     elif sorte <= affidabilita + 25:
-        return random.choice([
-            f"📞 'Mmm... mi metti in difficoltà. Sono indeciso tra la *{corretta}* e la *{errata}*, ma punterei più sulla prima...'",
-            f"📞 'Guarda, non sono sicurissimo al 100%, ma se dovessi rischiare direi la *{corretta}*.'"
-        ])
+        return f"📞 'Mmm... sono indeciso tra la *{corretta}* e la *{errata}*, ma punterei sulla prima...'"
     else:
-        return random.choice([
-            "📞 'Oddio, il tempo sta scadendo e proprio non mi viene in mente nulla... mi dispiace!'",
-            "📞 'Pronto? No, questa è davvero tosta. Non vorrei farti sbagliare, non ne ho idea!'"
-        ])
+        return "📞 'Pronto? No, guarda, questa è davvero difficile... non ne ho idea!'"
 
 # --- UTILS ---
 async def pulisci_messaggi_aiuto(user_id, context):
@@ -139,20 +129,27 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data, idx = query.data, p["current_q"]
     q = QUESTIONS[idx]
 
-    # Admin
+    # --- AZIONI ADMIN ---
     if data.startswith("adm_") and username in ADMIN_USERS:
         if data == "adm_view":
             top = list(players.find().sort("current_q", -1).limit(10))
             txt = "🏆 *Classifica*\n\n" + "\n".join([f"{i+1}. @{x.get('username')} - Liv {x.get('current_q')+1}" for i, x in enumerate(top)])
             await query.message.reply_text(txt or "Nessun dato.", parse_mode="Markdown")
         elif data == "adm_conf_reset":
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma", callback_data="adm_reset_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
-            await query.edit_message_text("Resettare la classifica?", reply_markup=kb)
-        elif data == "adm_reset_db":
-            players.delete_many({}); await query.edit_message_text("✅ Reset completato.")
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma Reset", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
+            await query.edit_message_text("⚠️ Vuoi resettare la classifica giocatori?", reply_markup=kb)
+        elif data == "adm_reset_class":
+            players.delete_many({}); await query.edit_message_text("✅ Classifica resettata.")
+        elif data == "adm_conf_db":
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔥 Conferma Drop DB", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
+            await query.edit_message_text("⚠️ *ATTENZIONE*: Vuoi eliminare l'intero database MongoDB?", reply_markup=kb)
+        elif data == "adm_drop_db":
+            client.drop_database('quiz_milionario'); await query.edit_message_text("💥 Database eliminato con successo.")
+        elif data == "adm_panel":
+            await admin_panel_msg(query)
         await query.answer(); return
 
-    # Risposte
+    # --- RISPOSTE ---
     if data.startswith("ans_"):
         scelta = data.replace("ans_", "")
         await pulisci_messaggi_aiuto(user_id, context)
@@ -167,7 +164,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
             await query.edit_message_text(f"❌ *Sbagliato!* La risposta era {q['c']}.")
             
-    # Aiuti
+    # --- AIUTI ---
     elif data.startswith("h_"):
         tipo = data.replace("h_", "")
         players.update_one({"user_id": user_id}, {"$set": {f"h.{tipo}": False}})
@@ -182,10 +179,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             players.update_one({"user_id": user_id}, {"$push": {"temp_msg_ids": msg_t.message_id}})
     await query.answer()
 
+async def admin_panel_msg(query_or_update):
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Vedi Classifica", callback_data="adm_view")],
+        [InlineKeyboardButton("Reset Classifica", callback_data="adm_conf_reset")],
+        [InlineKeyboardButton("Elimina Database", callback_data="adm_conf_db")]
+    ])
+    txt = "🛠 *Pannello Admin*"
+    if isinstance(query_or_update, Update): await query_or_update.message.reply_text(txt, reply_markup=kb, parse_mode="Markdown")
+    else: await query_or_update.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+
 async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.username in ADMIN_USERS:
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton("Classifica", callback_data="adm_view")], [InlineKeyboardButton("Reset", callback_data="adm_conf_reset")]])
-        await update.message.reply_text("🛠 Pannello Admin", reply_markup=kb)
+        await admin_panel_msg(update)
 
 # --- RUN ---
 server = Flask(__name__)
