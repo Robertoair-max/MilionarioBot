@@ -201,18 +201,33 @@ async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- FLASK SERVER ---
 app = Flask(__name__)
+
 @app.route('/')
-def home(): return "Bot is Running", 200
+def home():
+    return "Bot is Running", 200
 
 def run_flask():
+    # Render usa la variabile PORT, se manca usiamo 10000
     port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    # Importante: use_reloader=False evita che il thread parta due volte
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 # --- MAIN ---
 if __name__ == "__main__":
-    threading.Thread(target=run_flask, daemon=True).start()
+    # Avviamo il server web in un thread separato
+    t = threading.Thread(target=run_flask, daemon=True)
+    t.start()
+    
+    print("Server Flask avviato... Inizializzazione Bot Telegram.")
+    
+    # Avvia Telegram Bot
     application = Application.builder().token(TOKEN).build()
+    
+    # Handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin_cmd))
     application.add_handler(CallbackQueryHandler(handle_callback))
+    
+    # Avvio polling
+    print("Bot pronto al polling.")
     application.run_polling(drop_pending_updates=True)
