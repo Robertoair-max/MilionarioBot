@@ -1,11 +1,11 @@
 import os
 import random
+import urllib.parse
 from pymongo import MongoClient
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # --- CONFIGURAZIONE ---
-# Recupera i dati dalle variabili d'ambiente di Render
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 ADMIN_USERS = ["Lady_unknow", "Tuc0Pacific0"]
@@ -49,53 +49,55 @@ def logica_pubblico(idx, corretta):
 
 def logica_telefonata(idx, corretta):
     affidabilita = max(10, 85 - (idx * 5))
-    roll = random.randint(0, 100)
-    if roll <= affidabilita:
+    if random.randint(0, 100) <= affidabilita:
         return f"📞 'Sono certo, la risposta è la {corretta}!'"
-    elif roll <= affidabilita + 30:
+    elif random.randint(0, 100) <= 30:
         errata = random.choice([k for k in ["A", "B", "C", "D"] if k != corretta])
-        scelte = [corretta, errata]
-        random.shuffle(scelte)
-        return f"📞 'Mmm... sono indeciso tra la {scelte[0]} e la {scelte[1]}...'"
-    else:
-        return "📞 'Mi spiace, questa proprio non la so!'"
+        return f"📞 'Mmm... sono indeciso tra la {corretta} e la {errata}...'"
+    return "📞 'Mi spiace, questa proprio non la so!'"
 
-# --- GESTIONE COMANDI ---
+# --- GESTIONE CORE ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     player = players.find_one({"user_id": user.id})
-    
     if player and player.get("game_over") and user.username not in ADMIN_USERS:
         await update.message.reply_text(f"⛔️ Hai già giocato!\nSolo @Lady_unknow e @Tuc0Pacific0 possono giocare sempre.")
         return
-
     init = {"user_id": user.id, "username": user.username, "current_q": 0, "game_over": False, "h": {"5050": True, "pub": True, "tel": True}}
     players.update_one({"user_id": user.id}, {"$set": init}, upsert=True)
     await invia_domanda(update, context, 0)
 
-async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.username not in ADMIN_USERS:
-        return
-    kb = [[InlineKeyboardButton("📊 Vedi Classifica", callback_data="adm_view")], [InlineKeyboardButton("🗑 Cancella Classifica", callback_data="adm_conf")]]
-    await update.message.reply_text("🛠 *PANNELLO ADMIN*", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-
-async def invia_domanda(update, context, idx):
+async def invia_domanda(update, context, idx, rimosse=None):
+    user_id = update.effective_user.id
+    p = players.find_one({"user_id": user_id})
     q = QUESTIONS[idx]
-    txt = f"❓ *DOMANDA {idx+1}/15*\n\n{q['q']}\n\n" + "\n".join([f"*{k}*: {v}" for k, v in q['o'].items()])
-    kb = [[InlineKeyboardButton(f"Risp. {k}", callback_data=f"ans_{k}") for k in ["A", "B"]],
-          [InlineKeyboardButton(f"Risp. {k}", callback_data=f"ans_{k}") for k in ["C", "D"]],
-          [InlineKeyboardButton("50:50 🎭", callback_data="h_5050"), InlineKeyboardButton("Pubblico 👥", callback_data="h_pub"), InlineKeyboardButton("Tel 📞", callback_data="h_tel")]]
-    if update.message: await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-    else: await update.callback_query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    
+    txt = f"❓ *DOMANDA {idx+1}/15*\n\n{q['q']}\n\n"
+    for k, v in q['o'].items():
+        if rimosse and k in rimosse: continue
+        txt += f"*{k}*: {v}\n"
+    
+    # Bottoni risposte (nasconde quelle rimosse dal 5050)
+    row1 = [InlineKeyboardButton(f"Risp. {k}", callback_data=f"ans_{k}") for k in ["A", "B"] if not (rimosse and k in rimosse)]
+    row2 = [InlineKeyboardButton(f"Risp. {k}", callback_data=f"ans_{k}") for k in ["C", "D"] if not (rimosse and k in rimosse)]
+    
+    # Bottoni aiuti (mostra solo quelli disponibili)
+    row_h = []
+    if p["h"]["5050"]: row_h.append(InlineKeyboardButton("50:50 🎭", callback_data="h_5050"))
+    if p["h"]["pub"]: row_h.append(InlineKeyboardButton("Pubblico 👥", callback_data="h_pub"))
+    if p["h"]["tel"]: row_h.append(InlineKeyboardButton("Tel 📞", callback_data="h_tel"))
+    
+    kb = [row1, row2, row_h]
+    if update.message: await update.message.reply_text(txt, reply_markup=InlineKeyboardMarkup([r for r in kb if r]), parse_mode="Markdown")
+    else: await update.callback_query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([r for r in kb if r]), parse_mode="Markdown")
 
-# --- GESTIONE INTERAZIONI ---
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id, username = query.from_user.id, query.from_user.username
     p = players.find_one({"user_id": user_id})
     if not p or (p.get("game_over") and username not in ADMIN_USERS and not query.data.startswith("adm_")): return
     
-    data, idx = query.data, p.get("current_q", 0)
+    data, idx = query.data, p["current_q"]
     q = QUESTIONS[idx]
 
     if data.startswith("ans_"):
@@ -105,6 +107,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
             else:
                 players.update_one({"user_id": user_id}, {"$inc": {"current_q": 1}})
+                await query.answer("Esatto! ✅")
                 await invia_domanda(update, context, idx + 1)
         else:
             await query.edit_message_text(f"❌ *SBAGLIATO!*\nEra la {q['c']}. Gioco finito.", parse_mode="Markdown")
@@ -112,18 +115,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("h_"):
         tipo = data.split("_")[1]
-        if not p["h"].get(tipo):
-            await query.answer("⚠️ Aiuto già utilizzato!", show_alert=True)
-            return
         players.update_one({"user_id": user_id}, {"$set": {f"h.{tipo}": False}})
         if tipo == "5050":
-            err = random.sample([k for k in ["A", "B", "C", "D"] if k != q["c"]], 2)
-            await query.message.reply_text(f"🎭 *50:50*: Eliminate le opzioni {err[0]} e {err[1]}", parse_mode="Markdown")
+            rimosse = random.sample([k for k in ["A", "B", "C", "D"] if k != q["c"]], 2)
+            await invia_domanda(update, context, idx, rimosse=rimosse)
         elif tipo == "pub":
             res = logica_pubblico(idx, q["c"])
             await query.message.reply_text("📊 *Pubblico*:\n" + "\n".join([f"{k}: {v}%" for k, v in res.items()]), parse_mode="Markdown")
+            await invia_domanda(update, context, idx)
         elif tipo == "tel":
             await query.message.reply_text(logica_telefonata(idx, q["c"]))
+            await invia_domanda(update, context, idx)
         await query.answer()
 
     elif data.startswith("adm_"):
@@ -134,7 +136,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(txt or "Nessun dato.", parse_mode="Markdown")
         elif data == "adm_conf":
             kb = [[InlineKeyboardButton("✅ SÌ", callback_data="adm_del"), InlineKeyboardButton("❌ NO", callback_data="adm_view")]]
-            await query.edit_message_text("⚠️ Sei sicuro di voler cancellare tutto?", reply_markup=InlineKeyboardMarkup(kb))
+            await query.edit_message_text("⚠️ Vuoi resettare la classifica?", reply_markup=InlineKeyboardMarkup(kb))
         elif data == "adm_del":
             players.delete_many({})
             await query.edit_message_text("✅ Dati cancellati.")
@@ -143,6 +145,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == "__main__":
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin_panel))
+    app.add_handler(CommandHandler("admin", lambda u, c: admin_panel(u, c) if u.effective_user.username in ADMIN_USERS else None))
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.run_polling()
+
+async def admin_panel(update, context):
+    kb = [[InlineKeyboardButton("📊 Vedi Classifica", callback_data="adm_view")], [InlineKeyboardButton("🗑 Cancella Classifica", callback_data="adm_conf")]]
+    await update.message.reply_text("🛠 *PANNELLO ADMIN*", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
