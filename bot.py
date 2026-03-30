@@ -9,7 +9,8 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 # --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-ADMIN_USERS = ["@Lady_unknow", "@Tuc0Pacific0"]
+# Username autorizzati
+ADMIN_USERS = ["Lady_unknow", "Tuc0Pacific0"]
 TEMPO_RISPOSTA = 60
 
 client = MongoClient(MONGO_URI)
@@ -88,19 +89,19 @@ async def invia_domanda(update, context, idx, rimosse=None):
     if context.job_queue:
         for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
         context.job_queue.run_once(timeout_scaduto, TEMPO_RISPOSTA, user_id=user_id, name=str(user_id))
-   
+    
     txt = f"❓ *DOMANDA {idx+1}/15*\n\n{q['q']}\n\n"
     for k, v in q['o'].items():
         if rimosse and k in rimosse: continue
         txt += f"*{k}*: {v}\n"
-   
+    
     r1 = [InlineKeyboardButton(f"Risp. {k}", callback_data=f"ans_{k}") for k in ["A", "B"] if not (rimosse and k in rimosse)]
     r2 = [InlineKeyboardButton(f"Risp. {k}", callback_data=f"ans_{k}") for k in ["C", "D"] if not (rimosse and k in rimosse)]
     rh = []
     if p["h"]["5050"]: rh.append(InlineKeyboardButton("50:50 🎭", callback_data="h_5050"))
     if p["h"]["pub"]: rh.append(InlineKeyboardButton("Pubblico 👥", callback_data="h_pub"))
     if p["h"]["tel"]: rh.append(InlineKeyboardButton("Tel 📞", callback_data="h_tel"))
-   
+    
     kb = InlineKeyboardMarkup([r1, r2, rh])
     if update.callback_query:
         await update.callback_query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
@@ -123,7 +124,11 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
 
     # Logica Admin
-    if data.startswith("adm_") and username in ADMIN_USERS:
+    if data.startswith("adm_"):
+        if username not in ADMIN_USERS:
+            await query.answer("⛔ Azione riservata agli amministratori.", show_alert=True)
+            return
+
         if data == "adm_view":
             top = list(players.find().sort("current_q", -1).limit(10))
             txt = "🏆 *Classifica*\n\n" + "\n".join([f"{i+1}. @{x.get('username')} - Liv {x.get('current_q')+1}" for i, x in enumerate(top)])
@@ -134,7 +139,8 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "adm_reset_class":
             players.delete_many({}); await query.edit_message_text("✅ Classifica resettata.")
         elif data == "adm_conf_db":
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔥 Conferma Eliminazione", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
+            # Testo cambiato come richiesto
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔥 Conferma eliminazione", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
             await query.edit_message_text("⚠️ Eliminare il database?", reply_markup=kb)
         elif data == "adm_drop_db":
             client.drop_database('quiz_milionario'); await query.edit_message_text("💥 DB Eliminato.")
@@ -173,36 +179,34 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
 async def admin_panel_msg(q_or_u):
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("Vedi Classifica", callback_data="adm_view")],[InlineKeyboardButton("Reset Classifica", callback_data="adm_conf_reset")],[InlineKeyboardButton("Elimina Database", callback_data="adm_conf_db")]])
-    if isinstance(q_or_u, Update): await q_or_u.message.reply_text("🛠 *Pannello Admin*", reply_markup=kb, parse_mode="Markdown")
-    else: await q_or_u.edit_message_text("🛠 *Pannello Admin*", reply_markup=kb, parse_mode="Markdown")
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Vedi Classifica", callback_data="adm_view")],
+        [InlineKeyboardButton("Reset Classifica", callback_data="adm_conf_reset")],
+        [InlineKeyboardButton("Elimina Database", callback_data="adm_conf_db")]
+    ])
+    text = "🛠 *Pannello Admin*"
+    if isinstance(q_or_u, Update): await q_or_u.message.reply_text(text, reply_markup=kb, parse_mode="Markdown")
+    else: await q_or_u.edit_message_text(text, reply_markup=kb, parse_mode="Markdown")
 
 async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.username in ADMIN_USERS: await admin_panel_msg(update)
+    else: await update.message.reply_text("❌ Non sei autorizzato.")
 
 # --- SERVER ---
 server = Flask(__name__)
 
 @server.route('/')
 def home():
-    # Usiamo una risposta esplicita per evitare che Flask aggiunga header pesanti
     return "OK", 200
 
 def run_flask():
-    # Legge la porta di Render o usa la 5000 di default
     port = int(os.environ.get("PORT", 5000))
-    # use_reloader=False impedisce a Flask di sdoppiare il processo (causa dei conflitti porta)
     server.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 if __name__ == "__main__":
-    # Avvio del server in un thread leggero
     threading.Thread(target=run_flask, daemon=True).start()
-   
-    # Avvio del Bot
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(callback_logic))
-   
-    # drop_pending_updates pulisce la coda all'avvio, evitando sovraccarichi
     app.run_polling(drop_pending_updates=True)
