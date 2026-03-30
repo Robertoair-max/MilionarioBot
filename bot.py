@@ -1,6 +1,7 @@
 import os
 import random
 import threading
+import asyncio
 from flask import Flask
 from pymongo import MongoClient
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -9,15 +10,15 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 # --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-# Username autorizzati (senza @ per il confronto diretto)
 ADMIN_USERS = ["Lady_unknow", "Tuc0Pacific0"]
 TEMPO_RISPOSTA = 60
 
+# Inizializzazione MongoDB
 client = MongoClient(MONGO_URI)
 db = client.quiz_milionario
 players = db.players
 
-# --- DATABASE DOMANDE ---
+# --- DATABASE DOMANDE (Invariato) ---
 QUESTIONS = [
     {"q": "Qual è la capitale d'Italia?", "o": {"A": "Milano", "B": "Roma", "C": "Napoli", "D": "Torino"}, "c": "B"},
     {"q": "Quanti pianeti ci sono nel sistema solare?", "o": {"A": "7", "B": "9", "C": "8", "D": "10"}, "c": "C"},
@@ -36,7 +37,7 @@ QUESTIONS = [
     {"q": "Chi fu il primo uomo sulla Luna?", "o": {"A": "Yuri Gagarin", "B": "Buzz Aldrin", "C": "Neil Armstrong", "D": "Michael Collins"}, "c": "C"},
 ]
 
-# --- LOGICA AIUTI ---
+# --- LOGICA AIUTI E UTILS (Invariati) ---
 def genera_pubblico(corretta, idx):
     prob_corretta = max(35, 85 - (idx * 4))
     opzioni = ["A", "B", "C", "D"]
@@ -44,29 +45,21 @@ def genera_pubblico(corretta, idx):
     rimanente = 100 - voti[corretta]
     altre = [k for k in opzioni if k != corretta]
     random.shuffle(altre)
-    v1 = random.randint(0, rimanente)
-    voti[altre[0]] = v1
-    rimanente -= v1
-    v2 = random.randint(0, rimanente)
-    voti[altre[1]] = v2
+    v1 = random.randint(0, rimanente); voti[altre[0]] = v1; rimanente -= v1
+    v2 = random.randint(0, rimanente); voti[altre[1]] = v2
     voti[altre[2]] = 100 - (voti[corretta] + v1 + v2)
     res = "📊 *Risultato del pubblico:*\n\n"
-    for k in sorted(voti.keys()):
-        res += f"*{k}*: {voti[k]}%\n"
+    for k in sorted(voti.keys()): res += f"*{k}*: {voti[k]}%\n"
     return res
 
 def genera_tel(corretta, idx):
-    affidabilita = max(30, 90 - (idx * 5))
+    aff = max(30, 90 - (idx * 5))
     sorte = random.randint(1, 100)
     errata = random.choice([k for k in ["A", "B", "C", "D"] if k != corretta])
-    if sorte <= affidabilita:
-        return f"📞 'Pronto? Sì! Guarda, ne sono quasi certo... la risposta è la *{corretta}*!'"
-    elif sorte <= affidabilita + 25:
-        return f"📞 'Mmm... sono indeciso tra la *{corretta}* e la *{errata}*, ma punterei sulla prima...'"
-    else:
-        return "📞 'Pronto? No, guarda, questa è davvero difficile... non ne ho idea!'"
+    if sorte <= aff: return f"📞 'Pronto? Sì! Guarda, la risposta è la *{corretta}*!'"
+    elif sorte <= aff + 25: return f"📞 'Mmm... tra la *{corretta}* e la *{errata}*, punterei sulla prima...'"
+    return "📞 'Pronto? No, guarda... non ne ho idea!'"
 
-# --- UTILS ---
 async def pulisci_aiuti(user_id, context):
     p = players.find_one({"user_id": user_id})
     if p and p.get("temp_msg_ids"):
@@ -79,7 +72,7 @@ async def timeout_scaduto(context: ContextTypes.DEFAULT_TYPE):
     user_id = context.job.user_id
     players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
     await pulisci_aiuti(user_id, context)
-    try: await context.bot.send_message(user_id, "⏰ *TEMPO SCADUTO!*\nIl gioco finisce qui.", parse_mode="Markdown")
+    try: await context.bot.send_message(user_id, "⏰ *TEMPO SCADUTO!*", parse_mode="Markdown")
     except: pass
 
 async def invia_domanda(update, context, idx, rimosse=None):
@@ -89,32 +82,27 @@ async def invia_domanda(update, context, idx, rimosse=None):
     if context.job_queue:
         for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
         context.job_queue.run_once(timeout_scaduto, TEMPO_RISPOSTA, user_id=user_id, name=str(user_id))
-    
     txt = f"❓ *DOMANDA {idx+1}/15*\n\n{q['q']}\n\n"
     for k, v in q['o'].items():
         if rimosse and k in rimosse: continue
         txt += f"*{k}*: {v}\n"
-    
     r1 = [InlineKeyboardButton(f"Risp. {k}", callback_data=f"ans_{k}") for k in ["A", "B"] if not (rimosse and k in rimosse)]
     r2 = [InlineKeyboardButton(f"Risp. {k}", callback_data=f"ans_{k}") for k in ["C", "D"] if not (rimosse and k in rimosse)]
     rh = []
     if p["h"]["5050"]: rh.append(InlineKeyboardButton("50:50 🎭", callback_data="h_5050"))
     if p["h"]["pub"]: rh.append(InlineKeyboardButton("Pubblico 👥", callback_data="h_pub"))
     if p["h"]["tel"]: rh.append(InlineKeyboardButton("Tel 📞", callback_data="h_tel"))
-    
     kb = InlineKeyboardMarkup([r1, r2, rh])
-    if update.callback_query:
-        await update.callback_query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
-    else:
-        await update.message.reply_text(txt, reply_markup=kb, parse_mode="Markdown")
+    if update.callback_query: await update.callback_query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+    else: await update.message.reply_text(txt, reply_markup=kb, parse_mode="Markdown")
 
 # --- HANDLERS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     players.update_one({"user_id": user.id}, {"$set": {"user_id": user.id, "username": user.username, "current_q": 0, "game_over": False, "h": {"5050": True, "pub": True, "tel": True}, "temp_msg_ids": []}}, upsert=True)
-    benvenuto = "🏆 *BENVENUTO AL MILIONARIO!*\n\n⏳ Hai *60 secondi* per rispondere.\n🎭 *50:50*: Toglie 2 errori.\n👥 *Pubblico*: Vota la risposta.\n📞 *Tel*: Chiama un amico.\n\nPronto?"
+    txt = "🏆 *BENVENUTO AL MILIONARIO!*"
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("Inizia il Quiz 🚀", callback_data="game_start")]])
-    await update.message.reply_text(benvenuto, reply_markup=kb, parse_mode="Markdown")
+    await update.message.reply_text(txt, reply_markup=kb, parse_mode="Markdown")
 
 async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -123,50 +111,29 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not p: return
     data = query.data
 
-    # Logica Admin
     if data.startswith("adm_"):
         if username not in ADMIN_USERS:
-            await query.answer("⛔ Azione riservata agli amministratori.", show_alert=True)
-            return
-
+            await query.answer("⛔ Accesso negato.", show_alert=True); return
         if data == "adm_view":
             top = list(players.find().sort("current_q", -1).limit(10))
-            if not top:
-                txt = "🏆 *Classifica*\n\nNessun dato presente."
-            else:
-                txt = "🏆 *Classifica Top 10*\n\n" + "\n".join([f"{i+1}. @{x.get('username')} - Liv {x.get('current_q')+1}" for i, x in enumerate(top)])
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]])
-            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
-
+            txt = "🏆 *Classifica*\n\n" + "\n".join([f"{i+1}. @{x.get('username')} - Liv {x.get('current_q')+1}" for i, x in enumerate(top)]) if top else "Nessun dato."
+            await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_conf_reset":
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma Reset", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
-            await query.edit_message_text("⚠️ Resettare la classifica?", reply_markup=kb)
-
+            await query.edit_message_text("⚠️ Resettare classifica?", reply_markup=kb)
         elif data == "adm_reset_class":
-            players.delete_many({})
-            await query.edit_message_text("✅ Classifica resettata.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
-
+            players.delete_many({}); await query.edit_message_text("✅ Reset completato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
         elif data == "adm_conf_db":
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔥 Conferma eliminazione", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
-            await query.edit_message_text("⚠️ Eliminare il database?", reply_markup=kb)
-
+            await query.edit_message_text("⚠️ Eliminare DB?", reply_markup=kb)
         elif data == "adm_drop_db":
-            client.drop_database('quiz_milionario')
-            await query.edit_message_text("💥 DB Eliminato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+            client.drop_database('quiz_milionario'); await query.edit_message_text("💥 DB Eliminato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+        elif data == "adm_panel": await admin_panel_msg(query)
+        await query.answer(); return
 
-        elif data == "adm_panel":
-            await admin_panel_msg(query)
-
-        await query.answer()
-        return
-
-    # Logica Gioco
-    if data == "game_start":
-        await invia_domanda(update, context, 0)
+    if data == "game_start": await invia_domanda(update, context, 0)
     elif data.startswith("ans_"):
-        ans = data.replace("ans_", "")
-        q = QUESTIONS[p["current_q"]]
-        await pulisci_aiuti(user_id, context)
+        ans = data.replace("ans_", ""); q = QUESTIONS[p["current_q"]]; await pulisci_aiuti(user_id, context)
         if ans == q["c"]:
             if p["current_q"] == 14:
                 await query.edit_message_text("🏆 *MILIONARIO!*")
@@ -178,8 +145,7 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"❌ *Sbagliato!* Era {q['c']}.")
             players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
     elif data.startswith("h_"):
-        tipo = data.replace("h_", "")
-        q = QUESTIONS[p["current_q"]]
+        tipo = data.replace("h_", ""); q = QUESTIONS[p["current_q"]]
         players.update_one({"user_id": user_id}, {"$set": {f"h.{tipo}": False}})
         if tipo == "5050":
             rimosse = random.sample([k for k in ["A", "B", "C", "D"] if k != q["c"]], 2)
@@ -191,38 +157,34 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
 async def admin_panel_msg(q_or_u):
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Vedi Classifica", callback_data="adm_view")],
-        [InlineKeyboardButton("Reset Classifica", callback_data="adm_conf_reset")],
-        [InlineKeyboardButton("Elimina Database", callback_data="adm_conf_db")]
-    ])
-    txt = "🛠 *Pannello Admin*"
-    if isinstance(q_or_u, Update):
-        await q_or_u.message.reply_text(txt, reply_markup=kb, parse_mode="Markdown")
-    else:
-        await q_or_u.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("Vedi Classifica", callback_data="adm_view")],[InlineKeyboardButton("Reset Classifica", callback_data="adm_conf_reset")],[InlineKeyboardButton("Elimina Database", callback_data="adm_conf_db")]])
+    if isinstance(q_or_u, Update): await q_or_u.message.reply_text("🛠 *Pannello Admin*", reply_markup=kb, parse_mode="Markdown")
+    else: await q_or_u.edit_message_text("🛠 *Pannello Admin*", reply_markup=kb, parse_mode="Markdown")
 
 async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.username in ADMIN_USERS:
-        await admin_panel_msg(update)
-    else:
-        await update.message.reply_text("❌ Non sei autorizzato.")
+    if update.effective_user.username in ADMIN_USERS: await admin_panel_msg(update)
 
-# --- SERVER ---
+# --- SERVER FLASK ---
 server = Flask(__name__)
 
 @server.route('/')
-def home():
-    return "OK", 200
+def home(): return "Bot Online", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 5000))
+    # Importante: debug=False per evitare conflitti di thread
     server.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
+# --- MAIN ---
 if __name__ == "__main__":
+    # Avviamo Flask in un thread separato
     threading.Thread(target=run_flask, daemon=True).start()
+
+    # Avviamo il Bot nel thread principale (metodo consigliato per v20+)
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(callback_logic))
+
+    # run_polling() deve stare alla fine perché blocca il thread principale
     app.run_polling(drop_pending_updates=True)
