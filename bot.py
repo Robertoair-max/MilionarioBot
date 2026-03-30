@@ -9,7 +9,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 # --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-# Username autorizzati
+# Username autorizzati (senza @ per il confronto diretto)
 ADMIN_USERS = ["Lady_unknow", "Tuc0Pacific0"]
 TEMPO_RISPOSTA = 60
 
@@ -131,22 +131,34 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if data == "adm_view":
             top = list(players.find().sort("current_q", -1).limit(10))
-            txt = "🏆 *Classifica*\n\n" + "\n".join([f"{i+1}. @{x.get('username')} - Liv {x.get('current_q')+1}" for i, x in enumerate(top)])
-            await query.message.reply_text(txt or "Nessun dato.", parse_mode="Markdown")
+            if not top:
+                txt = "🏆 *Classifica*\n\nNessun dato presente."
+            else:
+                txt = "🏆 *Classifica Top 10*\n\n" + "\n".join([f"{i+1}. @{x.get('username')} - Liv {x.get('current_q')+1}" for i, x in enumerate(top)])
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]])
+            await query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+
         elif data == "adm_conf_reset":
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma Reset", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
             await query.edit_message_text("⚠️ Resettare la classifica?", reply_markup=kb)
+
         elif data == "adm_reset_class":
-            players.delete_many({}); await query.edit_message_text("✅ Classifica resettata.")
+            players.delete_many({})
+            await query.edit_message_text("✅ Classifica resettata.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+
         elif data == "adm_conf_db":
-            # Testo cambiato come richiesto
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔥 Conferma eliminazione", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
             await query.edit_message_text("⚠️ Eliminare il database?", reply_markup=kb)
+
         elif data == "adm_drop_db":
-            client.drop_database('quiz_milionario'); await query.edit_message_text("💥 DB Eliminato.")
+            client.drop_database('quiz_milionario')
+            await query.edit_message_text("💥 DB Eliminato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+
         elif data == "adm_panel":
             await admin_panel_msg(query)
-        await query.answer(); return
+
+        await query.answer()
+        return
 
     # Logica Gioco
     if data == "game_start":
@@ -184,13 +196,17 @@ async def admin_panel_msg(q_or_u):
         [InlineKeyboardButton("Reset Classifica", callback_data="adm_conf_reset")],
         [InlineKeyboardButton("Elimina Database", callback_data="adm_conf_db")]
     ])
-    text = "🛠 *Pannello Admin*"
-    if isinstance(q_or_u, Update): await q_or_u.message.reply_text(text, reply_markup=kb, parse_mode="Markdown")
-    else: await q_or_u.edit_message_text(text, reply_markup=kb, parse_mode="Markdown")
+    txt = "🛠 *Pannello Admin*"
+    if isinstance(q_or_u, Update):
+        await q_or_u.message.reply_text(txt, reply_markup=kb, parse_mode="Markdown")
+    else:
+        await q_or_u.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
 
 async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.username in ADMIN_USERS: await admin_panel_msg(update)
-    else: await update.message.reply_text("❌ Non sei autorizzato.")
+    if update.effective_user.username in ADMIN_USERS:
+        await admin_panel_msg(update)
+    else:
+        await update.message.reply_text("❌ Non sei autorizzato.")
 
 # --- SERVER ---
 server = Flask(__name__)
