@@ -150,9 +150,26 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message: await update.message.reply_text("🛠 *PANNELLO ADMIN*", reply_markup=kb, parse_mode="Markdown")
     else: await update.callback_query.edit_message_text("🛠 *PANNELLO ADMIN*", reply_markup=kb, parse_mode="Markdown")
 
+import threading
+from flask import Flask
+
+# Crea una piccola app web finta
+app_web = Flask(__name__)
+@app_web.route('/')
+def home(): return "Bot is running!"
+
+def run_flask():
+    # Render assegna una porta automaticamente nella variabile PORT
+    port = int(os.environ.get("PORT", 5000))
+    app_web.run(host='0.0.0.0', port=port)
+
 if __name__ == "__main__":
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin_cmd))
-    app.add_handler(CallbackQueryHandler(handle_callback))
-    app.run_polling()
+    # Avvia il sito web finto in un thread separato
+    threading.Thread(target=run_flask).start()
+    
+    # Avvia il Bot Telegram normalmente
+    application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("admin", admin_cmd))
+    application.add_handler(CallbackQueryHandler(handle_callback))
+    application.run_polling()
