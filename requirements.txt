@@ -1,5 +1,3 @@
-python-telegram-bot
+python-telegram-bot[job-queue]
 pymongo
-dnspython
 flask
-pip install "python-telegram-bot[job-queue]"
