@@ -12,7 +12,6 @@ MONGO_URI = os.getenv("MONGO_URI")
 ADMIN_USERS = ["Lady_unknow", "Tuc0Pacific0"]
 TEMPO_RISPOSTA = 60 
 
-# Connessione sicura a MongoDB
 try:
     client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
     db = client.quiz_milionario
@@ -43,16 +42,20 @@ QUESTIONS = [
 def genera_percentuali_pubblico(corretta, idx):
     prob_corretta = max(35, 85 - (idx * 4))
     altre = [k for k in ["A", "B", "C", "D"] if k != corretta]
-    voti = {corretta: random.randint(int(prob_corretta), 100)}
-    rimanente = 100 - voti[corretta]
     random.shuffle(altre)
+    
+    voti = {corretta: random.randint(int(prob_corretta), 95)}
+    rimanente = 100 - voti[corretta]
+    
     v1 = random.randint(0, rimanente)
-    voti[altre] = v1
+    voti[altre[0]] = v1
     rimanente -= v1
+    
     v2 = random.randint(0, rimanente)
-    voti[altre] = v2
-    voti[altre] = 100 - (voti[corretta] + v1 + v2)
-    res = "📊 *Risultato del pubblico:*\n"
+    voti[altre[1]] = v2
+    voti[altre[2]] = 100 - (voti[corretta] + v1 + v2)
+    
+    res = "📊 *Risultato del pubblico:*\n\n"
     for k in sorted(voti.keys()):
         res += f"*{k}*: {voti[k]}%\n"
     return res
@@ -91,10 +94,12 @@ async def invia_domanda(update, context, idx, rimosse=None):
     if context.job_queue:
         for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
         context.job_queue.run_once(timeout_scaduto, TEMPO_RISPOSTA, user_id=user_id, name=str(user_id))
+    
     txt = f"❓ *DOMANDA {idx+1}/15*\n\n{q['q']}\n\n"
     for k, v in q['o'].items():
         if rimosse and k in rimosse: continue
         txt += f"*{k}*: {v}\n"
+    
     r1 = [InlineKeyboardButton(f"Risp. {k}", callback_data=f"ans_{k}") for k in ["A", "B"] if not (rimosse and k in rimosse)]
     r2 = [InlineKeyboardButton(f"Risp. {k}", callback_data=f"ans_{k}") for k in ["C", "D"] if not (rimosse and k in rimosse)]
     rh = []
@@ -102,7 +107,11 @@ async def invia_domanda(update, context, idx, rimosse=None):
     if p["h"]["pub"]: rh.append(InlineKeyboardButton("Pubblico 👥", callback_data="h_pub"))
     if p["h"]["tel"]: rh.append(InlineKeyboardButton("Tel 📞", callback_data="h_tel"))
     kb = InlineKeyboardMarkup([r1, r2, rh])
-    await update.callback_query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+    
+    if update.callback_query and update.callback_query.data == "game_start":
+        await update.callback_query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+    elif update.callback_query:
+        await update.callback_query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
 
 # --- HANDLERS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -119,9 +128,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🏆 *BENVENUTO AL MILIONARIO!*\n\n"
         "⏳ Hai *60 secondi* per rispondere a ogni domanda.\n"
         "🎭 *50:50*: Toglie due risposte errate.\n"
-        "👥 *Pubblico*: Vota la risposta (attenzione ai livelli alti!).\n"
+        "👥 *Pubblico*: Vota la risposta.\n"
         "📞 *Tel*: Chiama un amico per un consiglio.\n\n"
-        "Buona fortuna!"
+        "Clicca il tasto sotto per iniziare!"
     )
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("Inizia il Quiz 🚀", callback_data="game_start")]])
     await update.message.reply_text(benvenuto, reply_markup=kb, parse_mode="Markdown")
@@ -133,13 +142,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not p: return
     data = query.data
 
-    # Gestione Avvio Quiz
     if data == "game_start":
         await invia_domanda(update, context, 0)
         await query.answer()
         return
 
-    # Azioni Admin
+    # --- AZIONI ADMIN ---
     if data.startswith("adm_") and username in ADMIN_USERS:
         if data == "adm_view":
             top = list(players.find().sort("current_q", -1).limit(10))
@@ -159,7 +167,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await admin_panel_msg(query)
         await query.answer(); return
 
-    # Logica Gioco
+    # --- LOGICA GIOCO ---
     idx = p["current_q"]
     q = QUESTIONS[idx]
 
@@ -184,11 +192,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             errate = random.sample([k for k in ["A", "B", "C", "D"] if k != q["c"]], 2)
             await invia_domanda(update, context, idx, rimosse=errate)
         elif tipo == "pub":
-            msg = await context.bot.send_message(user_id, genera_percentuali_pubblico(q['c'], idx), parse_mode="Markdown")
-            players.update_one({"user_id": user_id}, {"$push": {"temp_msg_ids": msg.message_id}})
+            msg_p = await context.bot.send_message(user_id, genera_percentuali_pubblico(q['c'], idx), parse_mode="Markdown")
+            players.update_one({"user_id": user_id}, {"$push": {"temp_msg_ids": msg_p.message_id}})
         elif tipo == "tel":
-            msg = await context.bot.send_message(user_id, genera_dialogo_telefonata(q['c'], idx), parse_mode="Markdown")
-            players.update_one({"user_id": user_id}, {"$push": {"temp_msg_ids": msg.message_id}})
+            msg_t = await context.bot.send_message(user_id, genera_dialogo_telefonata(q['c'], idx), parse_mode="Markdown")
+            players.update_one({"user_id": user_id}, {"$push": {"temp_msg_ids": msg_t.message_id}})
     await query.answer()
 
 async def admin_panel_msg(query_or_update):
@@ -201,33 +209,17 @@ async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- FLASK SERVER ---
 app = Flask(__name__)
-
 @app.route('/')
-def home():
-    return "Bot is Running", 200
+def home(): return "OK", 200
 
 def run_flask():
-    # Render usa la variabile PORT, se manca usiamo 10000
     port = int(os.environ.get("PORT", 10000))
-    # Importante: use_reloader=False evita che il thread parta due volte
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+    app.run(host='0.0.0.0', port=port, use_reloader=False)
 
-# --- MAIN ---
 if __name__ == "__main__":
-    # Avviamo il server web in un thread separato
-    t = threading.Thread(target=run_flask, daemon=True)
-    t.start()
-    
-    print("Server Flask avviato... Inizializzazione Bot Telegram.")
-    
-    # Avvia Telegram Bot
+    threading.Thread(target=run_flask, daemon=True).start()
     application = Application.builder().token(TOKEN).build()
-    
-    # Handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin_cmd))
     application.add_handler(CallbackQueryHandler(handle_callback))
-    
-    # Avvio polling
-    print("Bot pronto al polling.")
     application.run_polling(drop_pending_updates=True)
