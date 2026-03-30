@@ -140,7 +140,7 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "adm_reset_class":
             players.delete_many({}); await query.edit_message_text("✅ Classifica resettata.")
         elif data == "adm_conf_db":
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔥 Conferma Drop DB", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔥 Conferma Eliminazione", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
             await query.edit_message_text("⚠️ Eliminare il database?", reply_markup=kb)
         elif data == "adm_drop_db":
             client.drop_database('quiz_milionario'); await query.edit_message_text("💥 DB Eliminato.")
