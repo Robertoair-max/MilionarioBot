@@ -17,10 +17,8 @@ try:
     client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
     db = client.quiz_milionario
     players = db.players
-    client.server_info() # Forza il controllo connessione
 except Exception as e:
     print(f"ERRORE MONGODB: {e}")
-    # Non usciamo, permettiamo a Flask di partire per non far fallire il deploy di Render
 
 # --- DATABASE DOMANDE ---
 QUESTIONS = [
@@ -49,11 +47,11 @@ def genera_percentuali_pubblico(corretta, idx):
     rimanente = 100 - voti[corretta]
     random.shuffle(altre)
     v1 = random.randint(0, rimanente)
-    voti[altre[0]] = v1
+    voti[altre] = v1
     rimanente -= v1
     v2 = random.randint(0, rimanente)
-    voti[altre[1]] = v2
-    voti[altre[2]] = 100 - (voti[corretta] + v1 + v2)
+    voti[altre] = v2
+    voti[altre] = 100 - (voti[corretta] + v1 + v2)
     res = "📊 *Risultato del pubblico:*\n"
     for k in sorted(voti.keys()):
         res += f"*{k}*: {voti[k]}%\n"
@@ -104,8 +102,7 @@ async def invia_domanda(update, context, idx, rimosse=None):
     if p["h"]["pub"]: rh.append(InlineKeyboardButton("Pubblico 👥", callback_data="h_pub"))
     if p["h"]["tel"]: rh.append(InlineKeyboardButton("Tel 📞", callback_data="h_tel"))
     kb = InlineKeyboardMarkup([r1, r2, rh])
-    if update.message: await update.message.reply_text(txt, reply_markup=kb, parse_mode="Markdown")
-    else: await update.callback_query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+    await update.callback_query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
 
 # --- HANDLERS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -114,19 +111,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if p_exist and p_exist.get("game_over") and user.username not in ADMIN_USERS:
         await update.message.reply_text("⛔️ Hai già giocato!")
         return
+    
     init = {"user_id": user.id, "username": user.username, "current_q": 0, "game_over": False, "h": {"5050": True, "pub": True, "tel": True}, "temp_msg_ids": []}
     players.update_one({"user_id": user.id}, {"$set": init}, upsert=True)
-    await update.message.reply_text(f"🏆 *BENVENUTO!* Hai {TEMPO_RISPOSTA} secondi per domanda.", parse_mode="Markdown")
-    await invia_domanda(update, context, 0)
+    
+    benvenuto = (
+        "🏆 *BENVENUTO AL MILIONARIO!*\n\n"
+        "⏳ Hai *60 secondi* per rispondere a ogni domanda.\n"
+        "🎭 *50:50*: Toglie due risposte errate.\n"
+        "👥 *Pubblico*: Vota la risposta (attenzione ai livelli alti!).\n"
+        "📞 *Tel*: Chiama un amico per un consiglio.\n\n"
+        "Buona fortuna!"
+    )
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("Inizia il Quiz 🚀", callback_data="game_start")]])
+    await update.message.reply_text(benvenuto, reply_markup=kb, parse_mode="Markdown")
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id, username = query.from_user.id, query.from_user.username
     p = players.find_one({"user_id": user_id})
     if not p: return
-    data, idx = query.data, p["current_q"]
-    q = QUESTIONS[idx]
+    data = query.data
 
+    # Gestione Avvio Quiz
+    if data == "game_start":
+        await invia_domanda(update, context, 0)
+        await query.answer()
+        return
+
+    # Azioni Admin
     if data.startswith("adm_") and username in ADMIN_USERS:
         if data == "adm_view":
             top = list(players.find().sort("current_q", -1).limit(10))
@@ -146,6 +159,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await admin_panel_msg(query)
         await query.answer(); return
 
+    # Logica Gioco
+    idx = p["current_q"]
+    q = QUESTIONS[idx]
+
     if data.startswith("ans_"):
         scelta = data.replace("ans_", "")
         await pulisci_messaggi_aiuto(user_id, context)
@@ -158,7 +175,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await invia_domanda(update, context, idx + 1)
         else:
             players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
-            await query.edit_message_text(f"❌ *Sbagliato!* Era {q['c']}.")
+            await query.edit_message_text(f"❌ *Sbagliato!* Era la risposta {q['c']}.")
     
     elif data.startswith("h_"):
         tipo = data.replace("h_", "")
@@ -193,14 +210,9 @@ def run_flask():
 
 # --- MAIN ---
 if __name__ == "__main__":
-    # Avvia Flask in un thread
     threading.Thread(target=run_flask, daemon=True).start()
-    
-    # Avvia Telegram Bot
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("admin", admin_cmd))
     application.add_handler(CallbackQueryHandler(handle_callback))
-    
-    print("Bot avviato correttamente...")
     application.run_polling(drop_pending_updates=True)
