@@ -1,3 +1,5 @@
 python-telegram-bot[job-queue]
+apscheduler==3.10.4
 pymongo
+dnspython
 flask
