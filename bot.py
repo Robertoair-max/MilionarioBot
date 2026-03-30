@@ -64,17 +64,32 @@ def logica_telefonata(idx, corretta):
 # --- GESTIONE BOT ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    username = user.username
     player = players.find_one({"user_id": user.id})
     
-    if player and player.get("game_over") and user.username not in ADMIN_USERS:
-        await update.message.reply_text("⛔️ Hai già esaurito il tuo tentativo!")
+    # Lista admin autorizzati
+    ADMINS = ["Lady_unknow", "Tuc0Pacific0"]
+
+    # Controllo: se ha già giocato e NON è un admin
+    if player and player.get("game_over") and username not in ADMINS:
+        messaggio = (
+            "⛔️ *Spiacente!*\nHai già giocato la tua partita.\n\n"
+            "Solo @Lady_unknow e @Tuc0Pacific0 possono giocare sempre."
+        )
+        await update.message.reply_text(messaggio, parse_mode="Markdown")
         return
 
+    # Inizializzazione o reset (per admin o nuovo giocatore)
     init = {
-        "user_id": user.id, "username": user.username, "current_q": 0, "game_over": False,
+        "user_id": user.id, 
+        "username": username, 
+        "current_q": 0, 
+        "game_over": False,
         "h": {"5050": True, "pub": True, "tel": True}
     }
     players.update_one({"user_id": user.id}, {"$set": init}, upsert=True)
+    
+    await update.message.reply_text(f"Benvenuto nel Millionaire, @{username}! 🏆")
     await invia_domanda(update, context, 0)
 
 async def invia_domanda(update, context, idx):
