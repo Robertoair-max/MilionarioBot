@@ -156,9 +156,9 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             players.update_many({}, {"$set": {"current_q": 0, "game_over": True}}); await query.edit_message_text("✅ Reset completato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
         elif data == "adm_conf_db":
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔥 Conferma eliminazione", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
-            await query.edit_message_text("⚠️ Eliminare DB?", reply_markup=kb)
+            await query.edit_message_text("⚠️ Eliminare database?", reply_markup=kb)
         elif data == "adm_drop_db":
-            players.delete_many({}); await query.edit_message_text("💥 DB Svuotato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+            players.delete_many({}); await query.edit_message_text("💥 Database svuotato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
         elif data == "adm_panel": await admin_panel_msg(query)
         return
 
