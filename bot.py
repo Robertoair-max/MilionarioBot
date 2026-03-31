@@ -150,12 +150,12 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     txt += f"{i+1}. {user_label} - Liv {x.get('current_q', 0) + 1}\n"
             await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_conf_reset":
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma Reset", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma reset", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
             await query.edit_message_text("⚠️ Resettare classifica?", reply_markup=kb)
         elif data == "adm_reset_class":
             players.update_many({}, {"$set": {"current_q": 0, "game_over": True}}); await query.edit_message_text("✅ Reset completato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
         elif data == "adm_conf_db":
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔥 Conferma eliminazione", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma eliminazione", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
             await query.edit_message_text("⚠️ Eliminare database?", reply_markup=kb)
         elif data == "adm_drop_db":
             players.delete_many({}); await query.edit_message_text("💥 Database svuotato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
