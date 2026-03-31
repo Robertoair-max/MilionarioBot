@@ -81,6 +81,7 @@ async def invia_domanda(update, context, idx, rimosse=None):
     if idx >= len(QUESTIONS): return
     q = QUESTIONS[idx]
     
+    # Il timer parte qui (quando la domanda viene visualizzata)
     if context.job_queue:
         for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
         context.job_queue.run_once(timeout_scaduto, TEMPO_RISPOSTA, user_id=user_id, name=str(user_id))
@@ -111,9 +112,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     players.update_one({"user_id": user.id}, {"$set": {"user_id": user.id, "username": user.username, "current_q": 0, "game_over": False, "h": {"5050": True, "pub": True, "tel": True}, "temp_msg_ids": []}}, upsert=True)
-    txt = "🏆 *BENVENUTO AL MILIONARIO!*"
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("Inizia il Quiz 🚀", callback_data="game_start")]])
-    await update.message.reply_text(txt, reply_markup=kb, parse_mode="Markdown")
+    
+    regole = (
+        "🏆 *BENVENUTO AL CHI VUOL ESSERE MILIONARIO!*\n\n"
+        "📜 *REGOLE DEL GIOCO:*\n"
+        "• Hai **15 domande** per arrivare alla gloria.\n"
+        "• Hai **60 secondi** per rispondere a ogni domanda.\n"
+        "• Se sbagli o scade il tempo, il gioco finisce.\n\n"
+        "🎭 *AIUTI DISPONIBILI (1 solo uso):*\n"
+        "• **50:50**: Elimina due risposte errate.\n"
+        "• **Pubblico**: Chiedi il parere della sala.\n"
+        "• **Telefonata**: Chiama un amico per un consiglio.\n\n"
+        "Sei pronto a sfidare la sorte?"
+    )
+    
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("Gioca 🚀", callback_data="game_start")]])
+    await update.message.reply_text(regole, reply_markup=kb, parse_mode="Markdown")
 
 async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -149,18 +163,23 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # --- GAME LOGIC ---
-    if data == "game_start": await invia_domanda(update, context, 0)
+    if data == "game_start": 
+        await invia_domanda(update, context, 0)
     elif data.startswith("ans_"):
         if p.get("game_over") and username not in ADMIN_USERS: return
         ans = data.replace("ans_", ""); q = QUESTIONS[p["current_q"]]; await pulisci_aiuti(user_id, context)
         if ans == q["c"]:
             if p["current_q"] == 14:
+                if context.job_queue:
+                    for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
                 await query.edit_message_text("🏆 *MILIONARIO!*")
                 players.update_one({"user_id": user_id}, {"$set": {"game_over": True, "current_q": 14}})
             else:
                 players.update_one({"user_id": user_id}, {"$inc": {"current_q": 1}})
                 await invia_domanda(update, context, p["current_q"] + 1)
         else:
+            if context.job_queue:
+                for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
             await query.edit_message_text(f"❌ *Sbagliato!* Era {q['c']}.\nFine del gioco.")
             players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
     elif data.startswith("h_"):
