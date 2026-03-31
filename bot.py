@@ -85,7 +85,6 @@ async def invia_domanda(update, context, idx, rimosse=None):
     if idx >= len(QUESTIONS): return
     q = QUESTIONS[idx]
     
-    # Gestione Timer (60 secondi)
     if context.job_queue:
         for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
         context.job_queue.run_once(timeout_scaduto, TEMPO_RISPOSTA, user_id=user_id, name=str(user_id))
@@ -112,12 +111,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     players.update_one({"user_id": user.id}, {"$set": {"user_id": user.id, "username": user.username, "current_q": 0, "game_over": False, "h": {"5050": True, "pub": True, "tel": True}, "temp_msg_ids": []}}, upsert=True)
     
     regole = (
-        "🏆 *BENVENUTO AL MILIONARIO!*\\n\\n"
-        "📜 *REGOLAMENTO:*\\n"
-        "1️⃣ Hai **60 secondi** per ogni domanda.\\n"
-        "2️⃣ Se il tempo scade o sbagli, perdi tutto.\\n"
-        "3️⃣ Hai 3 aiuti utilizzabili una volta sola: 50:50, Pubblico e Telefonata.\\n\\n"
-        "Sei pronto a sfidare la sorte?"
+        "🏆 *BENVENUTO AL MILIONARIO!*\n\n"
+        "📜 *REGOLAMENTO:*\n"
+        "1️⃣ Hai **60 secondi** per ogni domanda.\n"
+        "2️⃣ Se il tempo scade o sbagli, il gioco finisce.\n"
+        "3️⃣ Hai 3 aiuti (50:50, Pubblico, Telefonata).\n\n"
+        "Sei pronto?"
     )
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("Inizia il Quiz 🚀", callback_data="game_init")]])
     await update.message.reply_text(regole, reply_markup=kb, parse_mode="Markdown")
@@ -125,41 +124,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    username = query.from_user.username
     p = players.find_one({"user_id": user_id})
     if not p: return
     
     data = query.data
 
-    # Pannello Admin
-    if data.startswith("adm_"):
-        if username not in ADMIN_USERS:
-            await query.answer("⛔ Accesso negato.", show_alert=True); return
-        if data == "adm_view":
-            top = list(players.find().sort("current_q", -1).limit(10))
-            txt = "🏆 *Classifica*\n\n" + "\n".join([f"{i+1}. @{x.get('username')} - Liv {x.get('current_q')}" for i, x in enumerate(top)]) if top else "Nessun dato."
-            await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
-        elif data == "adm_reset_class":
-            players.delete_many({}); await query.edit_message_text("✅ Classifica resettata.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
-        elif data == "adm_panel": await admin_panel_msg(query)
-        await query.answer(); return
-
-    # Inizio effettivo (dopo regole)
     if data == "game_init":
         await invia_domanda(update, context, 0)
         await query.answer(); return
 
-    # Controllo se il gioco è finito
     if p.get("game_over"):
-        await query.answer("Gioco terminato. Usa /start per ricominciare.", show_alert=True); return
+        await query.answer("Gioco terminato.", show_alert=True); return
 
-    # Logica Risposte
     if data.startswith("ans_"):
         ans = data.replace("ans_", "")
         current_idx = p["current_q"]
         q = QUESTIONS[current_idx]
         
-        # Ferma il timer
         if context.job_queue:
             for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
         
@@ -167,17 +148,16 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if ans == q["c"]:
             if current_idx == 14:
-                await query.edit_message_text("🏆 *INCREDIBILE! SEI UN MILIONARIO!*")
-                players.update_one({"user_id": user_id}, {"$set": {"game_over": True, "current_q": 15}})
+                await query.edit_message_text("🏆 *MILIONARIO!*")
+                players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
             else:
                 new_idx = current_idx + 1
                 players.update_one({"user_id": user_id}, {"$set": {"current_q": new_idx}})
                 await invia_domanda(update, context, new_idx)
         else:
-            await query.edit_message_text(f"❌ *SBAGLIATO!*\nLa risposta era: {q['c']}.\nIl gioco termina qui.")
+            await query.edit_message_text(f"❌ *SBAGLIATO!*\nEra: {q['c']}.")
             players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
 
-    # Logica Aiuti
     elif data.startswith("h_"):
         tipo = data.replace("h_", "")
         current_idx = p["current_q"]
@@ -193,37 +173,20 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.answer()
 
-async def admin_panel_msg(q_or_u):
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("Vedi Classifica", callback_data="adm_view")],[InlineKeyboardButton("Reset Classifica", callback_data="adm_reset_class")]])
-    if isinstance(q_or_u, Update): await q_or_u.message.reply_text("🛠 *Pannello Admin*", reply_markup=kb, parse_mode="Markdown")
-    else: await q_or_u.edit_message_text("🛠 *Pannello Admin*", reply_markup=kb, parse_mode="Markdown")
-
-async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.username in ADMIN_USERS: await admin_panel_msg(update)
-
-# --- SERVER FLASK E AUTO-PING ---
+# --- SERVER FLASK (OTTIMIZZATO PER CRON) ---
 server = Flask(__name__)
+# Riduciamo l'output al minimo per evitare errori di buffer nei cronjob
 @server.route('/')
-def home(): return "Bot Online", 200
+def home(): return "OK", 200 
 
 def run_flask():
+    logging.getLogger('werkzeug').setLevel(logging.ERROR) # Silenzia i log di accesso
     server.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
-
-def self_ping():
-    if not RENDER_URL: return
-    while True:
-        try: requests.get(RENDER_URL)
-        except: pass
-        time.sleep(600)
 
 # --- MAIN ---
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
-    threading.Thread(target=self_ping, daemon=True).start()
-
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(callback_logic))
-
     app.run_polling(drop_pending_updates=True)
