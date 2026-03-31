@@ -13,7 +13,6 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 # --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-RENDER_URL = os.getenv("RENDER_EXTERNAL_URL")
 ADMIN_USERS = ["Lady_unknow", "Tuc0Pacific0"]
 TEMPO_RISPOSTA = 60
 
@@ -41,7 +40,7 @@ QUESTIONS = [
     {"q": "Chi fu il primo uomo sulla Luna?", "o": {"A": "Yuri Gagarin", "B": "Buzz Aldrin", "C": "Neil Armstrong", "D": "Michael Collins"}, "c": "C"},
 ]
 
-# --- LOGICA AIUTI E UTILS ---
+# --- UTILS GIOCO ---
 def genera_pubblico(corretta, idx):
     prob_corretta = max(35, 85 - (idx * 4))
     opzioni = ["A", "B", "C", "D"]
@@ -109,78 +108,85 @@ async def invia_domanda(update, context, idx, rimosse=None):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     players.update_one({"user_id": user.id}, {"$set": {"user_id": user.id, "username": user.username, "current_q": 0, "game_over": False, "h": {"5050": True, "pub": True, "tel": True}, "temp_msg_ids": []}}, upsert=True)
-    
-    regole = (
-        "🏆 *BENVENUTO AL MILIONARIO!*\n\n"
-        "📜 *REGOLAMENTO:*\n"
-        "1️⃣ Hai **60 secondi** per ogni domanda.\n"
-        "2️⃣ Se il tempo scade o sbagli, il gioco finisce.\n"
-        "3️⃣ Hai 3 aiuti (50:50, Pubblico, Telefonata).\n\n"
-        "Sei pronto?"
-    )
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("Inizia il Quiz 🚀", callback_data="game_init")]])
-    await update.message.reply_text(regole, reply_markup=kb, parse_mode="Markdown")
+    txt = "🏆 *BENVENUTO AL MILIONARIO!*"
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("Inizia il Quiz 🚀", callback_data="game_start")]])
+    await update.message.reply_text(txt, reply_markup=kb, parse_mode="Markdown")
 
 async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user_id = query.from_user.id
+    user_id, username = query.from_user.id, query.from_user.username
     p = players.find_one({"user_id": user_id})
     if not p: return
-    
     data = query.data
 
-    if data == "game_init":
-        await invia_domanda(update, context, 0)
+    if data.startswith("adm_"):
+        if username not in ADMIN_USERS:
+            await query.answer("⛔ Accesso negato.", show_alert=True); return
+        if data == "adm_view":
+            top = list(players.find().sort("current_q", -1).limit(10))
+            txt = "🏆 *Classifica*\n\n" + "\n".join([f"{i+1}. @{x.get('username')} - Liv {x.get('current_q')+1}" for i, x in enumerate(top)]) if top else "Nessun dato."
+            await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
+        elif data == "adm_conf_reset":
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma Reset", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
+            await query.edit_message_text("⚠️ Resettare classifica?", reply_markup=kb)
+        elif data == "adm_reset_class":
+            players.delete_many({}); await query.edit_message_text("✅ Reset completato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+        elif data == "adm_conf_db":
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔥 Conferma eliminazione", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
+            await query.edit_message_text("⚠️ Eliminare DB?", reply_markup=kb)
+        elif data == "adm_drop_db":
+            client.drop_database('quiz_milionario'); await query.edit_message_text("💥 DB Eliminato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+        elif data == "adm_panel": await admin_panel_msg(query)
         await query.answer(); return
 
-    if p.get("game_over"):
-        await query.answer("Gioco terminato.", show_alert=True); return
-
-    if data.startswith("ans_"):
-        ans = data.replace("ans_", "")
-        current_idx = p["current_q"]
-        q = QUESTIONS[current_idx]
-        
-        if context.job_queue:
-            for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
-        
-        await pulisci_aiuti(user_id, context)
-        
+    if data == "game_start": await invia_domanda(update, context, 0)
+    elif data.startswith("ans_"):
+        if p.get("game_over"): await query.answer("Gioco terminato.", show_alert=True); return
+        ans = data.replace("ans_", ""); q = QUESTIONS[p["current_q"]]; await pulisci_aiuti(user_id, context)
         if ans == q["c"]:
-            if current_idx == 14:
+            if p["current_q"] == 14:
                 await query.edit_message_text("🏆 *MILIONARIO!*")
                 players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
             else:
-                new_idx = current_idx + 1
-                players.update_one({"user_id": user_id}, {"$set": {"current_q": new_idx}})
-                await invia_domanda(update, context, new_idx)
+                players.update_one({"user_id": user_id}, {"$inc": {"current_q": 1}})
+                await invia_domanda(update, context, p["current_q"] + 1)
         else:
-            await query.edit_message_text(f"❌ *SBAGLIATO!*\nEra: {q['c']}.")
+            await query.edit_message_text(f"❌ *Sbagliato!* Era {q['c']}.")
             players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
-
     elif data.startswith("h_"):
-        tipo = data.replace("h_", "")
-        current_idx = p["current_q"]
-        q = QUESTIONS[current_idx]
+        tipo = data.replace("h_", ""); q = QUESTIONS[p["current_q"]]
         players.update_one({"user_id": user_id}, {"$set": {f"h.{tipo}": False}})
         if tipo == "5050":
             rimosse = random.sample([k for k in ["A", "B", "C", "D"] if k != q["c"]], 2)
-            await invia_domanda(update, context, current_idx, rimosse)
+            await invia_domanda(update, context, p["current_q"], rimosse)
         else:
-            txt = genera_pubblico(q["c"], current_idx) if tipo == "pub" else genera_tel(q["c"], current_idx)
+            txt = genera_pubblico(q["c"], p["current_q"]) if tipo == "pub" else genera_tel(q["c"], p["current_q"])
             m = await context.bot.send_message(user_id, txt, parse_mode="Markdown")
             players.update_one({"user_id": user_id}, {"$push": {"temp_msg_ids": m.message_id}})
-    
     await query.answer()
 
-# --- SERVER FLASK (OTTIMIZZATO PER CRON) ---
+async def admin_panel_msg(q_or_u):
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Vedi Classifica", callback_data="adm_view")],
+        [InlineKeyboardButton("Reset Classifica", callback_data="adm_conf_reset")],
+        [InlineKeyboardButton("Elimina Database", callback_data="adm_conf_db")]
+    ])
+    if isinstance(q_or_u, Update): await q_or_u.message.reply_text("🛠 *Pannello Admin*", reply_markup=kb, parse_mode="Markdown")
+    else: await q_or_u.edit_message_text("🛠 *Pannello Admin*", reply_markup=kb, parse_mode="Markdown")
+
+async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.username in ADMIN_USERS: 
+        await admin_panel_msg(update)
+    else:
+        await update.message.reply_text("⛔ Accesso negato.")
+
+# --- SERVER FLASK ---
 server = Flask(__name__)
-# Riduciamo l'output al minimo per evitare errori di buffer nei cronjob
 @server.route('/')
 def home(): return "OK", 200 
 
 def run_flask():
-    logging.getLogger('werkzeug').setLevel(logging.ERROR) # Silenzia i log di accesso
+    logging.getLogger('werkzeug').setLevel(logging.ERROR)
     server.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
 
 # --- MAIN ---
@@ -188,5 +194,6 @@ if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(callback_logic))
     app.run_polling(drop_pending_updates=True)
