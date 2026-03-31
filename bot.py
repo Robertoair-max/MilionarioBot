@@ -168,11 +168,16 @@ async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 server = Flask(__name__)
 
 @server.route('/')
-def home(): return "Bot Online", 200
+def home(): 
+    # Usiamo una risposta minima e svuotiamo gli header per non appesantire il cron-job
+    return "OK", 200, {'Content-Type': 'text/plain'}
 
 def run_flask():
     port = int(os.environ.get("PORT", 5000))
-    # Importante: debug=False per evitare conflitti di thread
+    # Disattiviamo il logging di Flask per risparmiare risorse su Render
+    import logging
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
     server.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 # --- MAIN ---
