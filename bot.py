@@ -2,6 +2,8 @@ import os
 import random
 import threading
 import asyncio
+import time
+import requests
 from flask import Flask
 from pymongo import MongoClient
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -10,6 +12,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 # --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
+RENDER_URL = os.getenv("RENDER_EXTERNAL_URL") # Inserisci l'URL del tuo servizio nelle Env Var di Render
 ADMIN_USERS = ["Lady_unknow", "Tuc0Pacific0"]
 TEMPO_RISPOSTA = 60
 
@@ -18,7 +21,7 @@ client = MongoClient(MONGO_URI)
 db = client.quiz_milionario
 players = db.players
 
-# --- DATABASE DOMANDE (Invariato) ---
+# --- DATABASE DOMANDE ---
 QUESTIONS = [
     {"q": "Qual è la capitale d'Italia?", "o": {"A": "Milano", "B": "Roma", "C": "Napoli", "D": "Torino"}, "c": "B"},
     {"q": "Quanti pianeti ci sono nel sistema solare?", "o": {"A": "7", "B": "9", "C": "8", "D": "10"}, "c": "C"},
@@ -37,7 +40,7 @@ QUESTIONS = [
     {"q": "Chi fu il primo uomo sulla Luna?", "o": {"A": "Yuri Gagarin", "B": "Buzz Aldrin", "C": "Neil Armstrong", "D": "Michael Collins"}, "c": "C"},
 ]
 
-# --- LOGICA AIUTI E UTILS (Invariati) ---
+# --- LOGICA AIUTI E UTILS ---
 def genera_pubblico(corretta, idx):
     prob_corretta = max(35, 85 - (idx * 4))
     opzioni = ["A", "B", "C", "D"]
@@ -169,27 +172,36 @@ server = Flask(__name__)
 
 @server.route('/')
 def home(): 
-    # Usiamo una risposta minima e svuotiamo gli header per non appesantire il cron-job
     return "OK", 200, {'Content-Type': 'text/plain'}
 
 def run_flask():
     port = int(os.environ.get("PORT", 5000))
-    # Disattiviamo il logging di Flask per risparmiare risorse su Render
     import logging
     log = logging.getLogger('werkzeug')
     log.setLevel(logging.ERROR)
     server.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
+# --- AUTO PING INTERNO ---
+def self_ping():
+    if not RENDER_URL:
+        print("⚠️ Auto-ping disabilitato: RENDER_EXTERNAL_URL non trovata.")
+        return
+    while True:
+        try:
+            requests.get(RENDER_URL)
+            print("⚓ Self-ping inviato con successo.")
+        except Exception as e:
+            print(f"❌ Errore self-ping: {e}")
+        time.sleep(600) # Attende 10 minuti
+
 # --- MAIN ---
 if __name__ == "__main__":
-    # Avviamo Flask in un thread separato
     threading.Thread(target=run_flask, daemon=True).start()
+    threading.Thread(target=self_ping, daemon=True).start()
 
-    # Avviamo il Bot nel thread principale (metodo consigliato per v20+)
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(callback_logic))
 
-    # run_polling() deve stare alla fine perché blocca il thread principale
     app.run_polling(drop_pending_updates=True)
