@@ -1,4 +1,5 @@
 import os
+import sys
 import random
 import threading
 import logging
@@ -6,6 +7,20 @@ from flask import Flask, Response
 from pymongo import MongoClient
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+
+# --- OTTIMIZZAZIONE LOGGING (Per evitare Output too large) ---
+logging.basicConfig(level=logging.ERROR)
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+logging.getLogger('pymongo').setLevel(logging.ERROR)
+
+# Disabilita il banner di avvio di Flask
+try:
+    from flask import cli
+    cli.show_server_banner = lambda *x: None
+except ImportError:
+    pass
 
 # --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -203,12 +218,10 @@ server = Flask(__name__)
 
 @server.route('/')
 def home():
-    # Risposta ultra-leggera per evitare errori di output su cron-job
-    return Response(status=200)
+    # Risposta minima per ridurre l'output dei log
+    return "OK", 200
 
 def run_flask():
-    logging.getLogger('werkzeug').setLevel(logging.ERROR)
-    # Eseguito con debug=False e use_reloader=False per la massima stabilità in thread
     server.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)), debug=False, use_reloader=False)
 
 if __name__ == "__main__":
