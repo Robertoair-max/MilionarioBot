@@ -2,7 +2,7 @@ import os
 import random
 import threading
 import logging
-from flask import Flask
+from flask import Flask, Response
 from pymongo import MongoClient
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -10,7 +10,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 # --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-ADMIN_USERS = ["Lady_unknow", "Tuc0Pacific0"]
+ADMIN_USERS = ["Lady_unknown", "Tuc0Pacific0"]
 TEMPO_RISPOSTA = 60
 
 # Inizializzazione MongoDB
@@ -55,7 +55,6 @@ def genera_pubblico(corretta, idx):
 def genera_tel(corretta, idx):
     aff = max(30, 90 - (idx * 5))
     sorte = random.randint(1, 100)
-    errata = random.choice([k for k in ["A", "B", "C", "D"] if k != corretta])
     if sorte <= aff: return f"📞 'Pronto? Sì! La risposta è la *{corretta}*!'"
     elif sorte <= aff + 25: return f"📞 'Mmm... punterei sulla *{corretta}*!'"
     return "📞 'Pronto? Non ne ho idea, mi spiace!'"
@@ -81,7 +80,6 @@ async def invia_domanda(update, context, idx, rimosse=None):
     if idx >= len(QUESTIONS): return
     q = QUESTIONS[idx]
     
-    # Il timer parte qui (quando la domanda viene visualizzata)
     if context.job_queue:
         for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
         context.job_queue.run_once(timeout_scaduto, TEMPO_RISPOSTA, user_id=user_id, name=str(user_id))
@@ -129,6 +127,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("Gioca 🚀", callback_data="game_start")]])
     await update.message.reply_text(regole, reply_markup=kb, parse_mode="Markdown")
 
+async def admin_panel_msg(q_or_u):
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton("📊 Vedi Classifica", callback_data="adm_view")],[InlineKeyboardButton("🧹 Reset Classifica", callback_data="adm_conf_reset")],[InlineKeyboardButton("🗑️ Svuota Database", callback_data="adm_conf_db")]])
+    txt = "🛠 *Pannello Admin*"
+    if isinstance(q_or_u, Update): await q_or_u.message.reply_text(txt, reply_markup=kb, parse_mode="Markdown")
+    else: await q_or_u.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
+
 async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -137,7 +141,6 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not p: return
     data = query.data
 
-    # --- ADMIN LOGIC ---
     if data.startswith("adm_"):
         if username not in ADMIN_USERS: return
         if data == "adm_view":
@@ -162,7 +165,6 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "adm_panel": await admin_panel_msg(query)
         return
 
-    # --- GAME LOGIC ---
     if data == "game_start": 
         await invia_domanda(update, context, 0)
     elif data.startswith("ans_"):
@@ -193,22 +195,21 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             m = await context.bot.send_message(user_id, txt, parse_mode="Markdown")
             players.update_one({"user_id": user_id}, {"$push": {"temp_msg_ids": m.message_id}})
 
-async def admin_panel_msg(q_or_u):
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("📊 Vedi Classifica", callback_data="adm_view")],[InlineKeyboardButton("🧹 Reset Classifica", callback_data="adm_conf_reset")],[InlineKeyboardButton("🗑️ Svuota Database", callback_data="adm_conf_db")]])
-    txt = "🛠 *Pannello Admin*"
-    if isinstance(q_or_u, Update): await q_or_u.message.reply_text(txt, reply_markup=kb, parse_mode="Markdown")
-    else: await q_or_u.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
-
 async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.username in ADMIN_USERS: await admin_panel_msg(update)
 
 # --- SERVER ---
 server = Flask(__name__)
+
 @server.route('/')
-def home(): return "OK", 200 
+def home():
+    # Risposta ultra-leggera per evitare errori di output su cron-job
+    return Response(status=200)
+
 def run_flask():
     logging.getLogger('werkzeug').setLevel(logging.ERROR)
-    server.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
+    # Eseguito con debug=False e use_reloader=False per la massima stabilità in thread
+    server.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)), debug=False, use_reloader=False)
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
