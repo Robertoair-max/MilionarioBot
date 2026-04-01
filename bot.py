@@ -20,21 +20,21 @@ players = db.players
 
 # --- DATABASE DOMANDE ---
 QUESTIONS = [
-    {"q": "Qual è la capitale d'Italia?", "o": {"A": "Milano", "B": "Roma", "C": "Napoli", "D": "Torino"}, "c": "B"},
-    {"q": "Quanti pianeti ci sono nel sistema solare?", "o": {"A": "7", "B": "9", "C": "8", "D": "10"}, "c": "C"},
-    {"q": "Chi ha dipinto la Gioconda?", "o": {"A": "Michelangelo", "B": "Raffaello", "C": "Leonardo", "D": "Donatello"}, "c": "C"},
-    {"q": "Qual è l'elemento chimico con simbolo O?", "o": {"A": "Oro", "B": "Ossigeno", "C": "Osmio", "D": "Olio"}, "c": "B"},
-    {"q": "In che anno è iniziata la Seconda Guerra Mondiale?", "o": {"A": "1914", "B": "1939", "C": "1945", "D": "1929"}, "c": "B"},
-    {"q": "Quale organo pompa il sangue nel corpo?", "o": {"A": "Polmoni", "B": "Cervello", "C": "Fegato", "D": "Cuore"}, "c": "D"},
-    {"q": "Chi scrisse la Divina Commedia?", "o": {"A": "Petrarca", "B": "Boccaccio", "C": "Dante Alighieri", "D": "Leopardi"}, "c": "C"},
-    {"q": "Qual è il fiume più lungo del mondo?", "o": {"A": "Nilo", "B": "Rio delle Amazzoni", "C": "Mississippi", "D": "Tevere"}, "c": "B"},
-    {"q": "In quale continente si trova il deserto del Sahara?", "o": {"A": "Asia", "B": "America", "C": "Africa", "D": "Australia"}, "c": "C"},
-    {"q": "Qual è il metallo più prezioso tra questi?", "o": {"A": "Argento", "B": "Bronzo", "C": "Oro", "D": "Rame"}, "c": "C"},
-    {"q": "Quante corde ha un violino standard?", "o": {"A": "4", "B": "6", "C": "5", "D": "3"}, "c": "A"},
-    {"q": "Chi è l'autore di 'I Promessi Sposi'?", "o": {"A": "Pascoli", "B": "Manzoni", "C": "Pirandello", "D": "Svevo"}, "c": "B"},
-    {"q": "Qual è la velocità della luce (circa)?", "o": {"A": "300.000 km/s", "B": "150.000 km/s", "C": "1.000.000 km/s", "D": "50.000 km/s"}, "c": "A"},
-    {"q": "Quale paese ha vinto più Mondiali di calcio?", "o": {"A": "Italia", "B": "Germania", "C": "Brasile", "D": "Argentina"}, "c": "C"},
-    {"q": "Chi fu il primo uomo sulla Luna?", "o": {"A": "Yuri Gagarin", "B": "Buzz Aldrin", "C": "Neil Armstrong", "D": "Michael Collins"}, "c": "C"},
+    {"q": "Quale tra questi frutti cresce a grappoli?", "o": {"A": "Mela", "B": "Pera", "C": "Uva", "D": "Pesca"}, "c": "C"},
+    {"q": "Quanti giorni ci sono in un anno bisestile?", "o": {"A": "364", "B": "365", "C": "366", "D": "360"}, "c": "C"},
+    {"q": "Qual è il colore ottenuto mescolando blu e giallo?", "o": {"A": "Verde", "B": "Viola", "C": "Arancione", "D": "Marrone"}, "c": "A"},
+    {"q": "In quale città si trova il Colosseo?", "o": {"A": "Milano", "B": "Roma", "C": "Firenze", "D": "Venezia"}, "c": "B"},
+    {"q": "Qual è il pianeta più vicino al Sole?", "o": {"A": "Marte", "B": "Venere", "C": "Mercurio", "D": "Terra"}, "c": "C"},
+    {"q": "Quale animale è il simbolo della saggezza?", "o": {"A": "Leone", "B": "Civetta", "C": "Volpe", "D": "Cane"}, "c": "B"},
+    {"q": "Chi è l'attuale Re del Regno Unito (2024)?", "o": {"A": "Guglielmo", "B": "Filippo", "C": "Carlo III", "D": "Enrico"}, "c": "C"},
+    {"q": "In che nazione è nato il celebre Wolfgang Amadeus Mozart?", "o": {"A": "Germania", "B": "Austria", "C": "Svizzera", "D": "Francia"}, "c": "B"},
+    {"q": "Quale organo umano è responsabile della produzione di insulina?", "o": {"A": "Fegato", "B": "Reni", "C": "Pancreas", "D": "Milza"}, "c": "C"},
+    {"q": "Qual è la montagna più alta d'Europa?", "o": {"A": "Monte Bianco", "B": "Monte Rosa", "C": "Cervino", "D": "Gran Sasso"}, "c": "A"},
+    {"q": "Chi scrisse il romanzo 'Il nome della rosa'?", "o": {"A": "Italo Calvino", "B": "Umberto Eco", "C": "Dante Alighieri", "D": "Alessandro Manzoni"}, "c": "B"},
+    {"q": "Quanti sono i tasti bianchi e neri in un pianoforte standard?", "o": {"A": "76", "B": "88", "C": "92", "D": "104"}, "c": "B"},
+    {"q": "In quale città fu firmata la Costituzione degli Stati Uniti?", "o": {"A": "New York", "B": "Washington D.C.", "C": "Philadelphia", "D": "Boston"}, "c": "C"},
+    {"q": "Qual è il nome dell'unico satellite naturale della Terra?", "o": {"A": "Europa", "B": "Luna", "C": "Io", "D": "Titano"}, "c": "B"},
+    {"q": "Quale fisico vinse il premio Nobel per la scoperta dell'effetto fotoelettrico?", "o": {"A": "Marie Curie", "B": "Niels Bohr", "C": "Albert Einstein", "D": "Enrico Fermi"}, "c": "C"}
 ]
 
 # --- UTILS AIUTI ---
