@@ -7,7 +7,6 @@ import time
 from flask import Flask, make_response
 from pymongo import MongoClient, DESCENDING
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram import constants # Per i limiti di testo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # --- LOGGING ---
@@ -46,7 +45,7 @@ QUESTIONS = [
     {"q": "Quale fisico vinse il premio Nobel per la scoperta dell'effetto fotoelettrico?", "o": {"A": "Marie Curie", "B": "Niels Bohr", "C": "Albert Einstein", "D": "Enrico Fermi"}, "c": "C"}
 ]
 
-# --- UTILS ---
+# --- UTILS AIUTI ---
 def genera_pubblico(corretta, idx):
     prob = max(35, 85 - (idx * 4))
     opzioni = ["A", "B", "C", "D"]
@@ -77,8 +76,8 @@ async def pulisci_aiuti(user_id, context):
 async def timeout_scaduto(context: ContextTypes.DEFAULT_TYPE):
     user_id = context.job.user_id
     p = players.find_one({"user_id": user_id})
-    livello = p.get("current_q", 0)
-    players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
+    livello = p.get("current_q", 0) if p else 0
+    players.update_one({"user_id": user_id}, {"$set": {"game_over": True}}, upsert=True)
     await pulisci_aiuti(user_id, context)
     try: await context.bot.send_message(user_id, f"⏰ *TEMPO SCADUTO!*\nIl gioco è terminato.\n🎯 Risposte corrette: *{livello}*", parse_mode="Markdown")
     except: pass
@@ -124,8 +123,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Hai **15 domande** per arrivare alla gloria.\n"
         "• Hai **60 secondi** per rispondere a ogni domanda.\n"
         "• Se sbagli o scade il tempo, il gioco finisce.\n\n"
-        "🎭 *AIUTI DISPONIBILI:*\n"
-        "• **50:50**, **Pubblico**, **Telefonata** (1 uso ciascuno).\n\n"
         "Sei pronto?"
     )
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("Gioca 🚀", callback_data="game_start")]])
@@ -144,28 +141,27 @@ async def admin_panel_msg(q_or_u):
 async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    
-    # IMPORTANTE: Rispondi subito al callback per evitare il "bottone morto"
     await query.answer() 
 
+    # Logica per Admin: se il record non esiste, lo ricreiamo per permettere la navigazione "indietro"
     p = players.find_one({"user_id": user_id})
+    if not p and user_id in ADMIN_IDS:
+        players.update_one({"user_id": user_id}, {"$set": {"user_id": user_id, "username": query.from_user.username, "current_q": 0, "game_over": True, "h": {"5050": True, "pub": True, "tel": True}, "temp_msg_ids": []}}, upsert=True)
+        p = players.find_one({"user_id": user_id})
+    
     if not p: return
     data = query.data
 
     if data.startswith("adm_"):
         if user_id not in ADMIN_IDS: return
         if data == "adm_view":
-            # Proiezione per velocità e limit 50 per evitare messaggi troppo lunghi
             top = list(players.find({}, {"username": 1, "current_q": 1, "user_id": 1}).sort("current_q", -1).limit(50))
-            txt = "🏆 *CLASSIFICA (Risposte Corrette)*\n\n"
+            txt = "🏆 *CLASSIFICA*\n\n"
             if not top: txt += "Nessun dato."
             else:
                 for i, x in enumerate(top):
                     name = f"@{x.get('username')}" if x.get('username') else f"ID:{x['user_id']}"
-                    txt += f"{i+1}. {name} — Livello: *{x.get('current_q', 0)}*\n"
-            
-            # Controllo lunghezza messaggio Telegram (max 4096 char)
-            if len(txt) > 4000: txt = txt[:4000] + "\n..."
+                    txt += f"{i+1}. {name} — Risposte: *{x.get('current_q', 0)}*\n"
             await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_conf_reset":
             await query.edit_message_text("⚠️ Resettare classifica?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ No", callback_data="adm_panel")]]))
@@ -175,7 +171,10 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "adm_conf_db":
             await query.edit_message_text("⚠️ Svuotare tutto?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ No", callback_data="adm_panel")]]))
         elif data == "adm_drop_db":
-            players.delete_many({}); await query.edit_message_text("💥 Database svuotato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+            players.delete_many({})
+            # Dopo il drop, ricreiamo l'admin subito per non bloccare il menu
+            players.update_one({"user_id": user_id}, {"$set": {"user_id": user_id, "username": query.from_user.username, "current_q": 0, "game_over": True, "h": {"5050": True, "pub": True, "tel": True}, "temp_msg_ids": []}}, upsert=True)
+            await query.edit_message_text("💥 Database svuotato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
         elif data == "adm_panel": await admin_panel_msg(query)
         return
 
@@ -187,7 +186,7 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             nuovo_liv = p["current_q"] + 1
             if nuovo_liv == 15:
                 if context.job_queue: [j.schedule_removal() for j in context.job_queue.get_jobs_by_name(str(user_id))]
-                await query.edit_message_text("🏆 *MILIONARIO!*\n🎯 Risposte corrette: *15*")
+                await query.edit_message_text("🏆 *MILIONARIO!*")
                 players.update_one({"user_id": user_id}, {"$set": {"game_over": True, "current_q": 15}})
             else:
                 players.update_one({"user_id": user_id}, {"$set": {"current_q": nuovo_liv}})
@@ -228,8 +227,5 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(callback_logic))
-    
-    # Assicurati che l'indice esista all'avvio
     players.create_index([("current_q", DESCENDING)])
-    
     app.run_polling(drop_pending_updates=True)
