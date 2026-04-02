@@ -3,36 +3,30 @@ import sys
 import random
 import threading
 import logging
-from flask import Flask, Response
-from pymongo import MongoClient
+from flask import Flask
+from pymongo import MongoClient, DESCENDING
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# --- OTTIMIZZAZIONE LOGGING ---
+# --- LOGGING ---
 logging.basicConfig(level=logging.ERROR)
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
-logging.getLogger('httpx').setLevel(logging.WARNING)
-logging.getLogger('urllib3').setLevel(logging.WARNING)
-logging.getLogger('pymongo').setLevel(logging.ERROR)
-
-try:
-    from flask import cli
-    cli.show_server_banner = lambda *x: None
-except ImportError:
-    pass
 
 # --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 
-# Gestione Admin tramite ID Telegram
-ADMIN_IDS = [7707024030, 5838296578] 
+# ID Admin (Modificati per usare gli ID forniti)
+ADMIN_IDS = [7707024030, 5838296578]
 TEMPO_RISPOSTA = 60
 
 # Inizializzazione MongoDB
 client = MongoClient(MONGO_URI)
 db = client.quiz_milionario
 players = db.players
+
+# Indice per classifica veloce
+players.create_index([("current_q", DESCENDING)])
 
 # --- DATABASE DOMANDE ---
 QUESTIONS = [
@@ -53,7 +47,7 @@ QUESTIONS = [
     {"q": "Quale fisico vinse il premio Nobel per la scoperta dell'effetto fotoelettrico?", "o": {"A": "Marie Curie", "B": "Niels Bohr", "C": "Albert Einstein", "D": "Enrico Fermi"}, "c": "C"}
 ]
 
-# --- UTILS AIUTI ---
+# --- UTILS ---
 def genera_pubblico(corretta, idx):
     prob = max(35, 85 - (idx * 4))
     opzioni = ["A", "B", "C", "D"]
@@ -70,9 +64,7 @@ def genera_pubblico(corretta, idx):
 
 def genera_tel(corretta, idx):
     aff = max(30, 90 - (idx * 5))
-    sorte = random.randint(1, 100)
-    if sorte <= aff: return f"📞 'Pronto? Sì! La risposta è la *{corretta}*!'"
-    elif sorte <= aff + 25: return f"📞 'Mmm... punterei sulla *{corretta}*!'"
+    if random.randint(1, 100) <= aff: return f"📞 'Pronto? Sì! La risposta è la *{corretta}*!'"
     return "📞 'Pronto? Non ne ho idea, mi spiace!'"
 
 async def pulisci_aiuti(user_id, context):
@@ -145,7 +137,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def admin_panel_msg(q_or_u):
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📊 Vedi Classifica", callback_data="adm_view")],
+        [InlineKeyboardButton("📊 Classifica (Top 50)", callback_data="adm_view")],
         [InlineKeyboardButton("🧹 Reset Classifica", callback_data="adm_conf_reset")],
         [InlineKeyboardButton("🗑️ Svuota Database", callback_data="adm_conf_db")]
     ])
@@ -155,8 +147,9 @@ async def admin_panel_msg(q_or_u):
 
 async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     user_id = query.from_user.id
+    await query.answer() 
+
     p = players.find_one({"user_id": user_id})
     if not p: return
     data = query.data
@@ -164,24 +157,23 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("adm_"):
         if user_id not in ADMIN_IDS: return
         if data == "adm_view":
-            # Ottimizzazione query classifica
-            top = list(players.find({}, {"username": 1, "current_q": 1}).sort("current_q", -1).limit(50))
-            txt = "🏆 *Classifica Totale*\n\n"
-            if not top: txt += "Nessun dato."
+            top = list(players.find({}, {"username": 1, "current_q": 1, "user_id": 1}).sort("current_q", -1).limit(50))
+            txt = "🏆 *TOP 50 GIOCATORI*\n\n"
+            if not top: txt += "Nessun dato registrato."
             else:
                 for i, x in enumerate(top):
-                    user_label = f"@{x.get('username')}" if x.get('username') else "Anonimo"
-                    txt += f"{i+1}. {user_label} - Liv {x.get('current_q', 0) + 1}\n"
+                    name = f"@{x.get('username')}" if x.get('username') else f"ID:{x['user_id']}"
+                    txt += f"{i+1}. {name} - Livello {x.get('current_q', 0) + 1}\n"
             await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_conf_reset":
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma reset", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
-            await query.edit_message_text("⚠️ Resettare classifica?", reply_markup=kb)
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
+            await query.edit_message_text("⚠️ Resettare la classifica?", reply_markup=kb)
         elif data == "adm_reset_class":
             players.update_many({}, {"$set": {"current_q": 0, "game_over": True}})
-            await query.edit_message_text("✅ Reset completato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+            await query.edit_message_text("✅ Classifica resettata.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
         elif data == "adm_conf_db":
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma eliminazione", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
-            await query.edit_message_text("⚠️ Eliminare database?", reply_markup=kb)
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
+            await query.edit_message_text("⚠️ ELIMINARE TUTTO IL DATABASE?", reply_markup=kb)
         elif data == "adm_drop_db":
             players.delete_many({})
             await query.edit_message_text("💥 Database svuotato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
@@ -192,7 +184,8 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await invia_domanda(update, context, 0)
     elif data.startswith("ans_"):
         if p.get("game_over") and user_id not in ADMIN_IDS: return
-        ans = data.replace("ans_", ""); q = QUESTIONS[p["current_q"]]; await pulisci_aiuti(user_id, context)
+        ans = data.replace("ans_", ""); q = QUESTIONS[p["current_q"]]
+        await pulisci_aiuti(user_id, context)
         if ans == q["c"]:
             if p["current_q"] == 14:
                 if context.job_queue:
@@ -223,10 +216,8 @@ async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- SERVER ---
 server = Flask(__name__)
-
 @server.route('/')
-def home():
-    return "OK", 200
+def home(): return "OK", 200
 
 def run_flask():
     server.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)), debug=False, use_reloader=False)
