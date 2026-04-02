@@ -8,14 +8,13 @@ from pymongo import MongoClient
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# --- OTTIMIZZAZIONE LOGGING (Per evitare Output too large) ---
+# --- OTTIMIZZAZIONE LOGGING ---
 logging.basicConfig(level=logging.ERROR)
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
 logging.getLogger('pymongo').setLevel(logging.ERROR)
 
-# Disabilita il banner di avvio di Flask
 try:
     from flask import cli
     cli.show_server_banner = lambda *x: None
@@ -25,7 +24,9 @@ except ImportError:
 # --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-ADMIN_USERS = ["Lady_unknown", "Tuc0Pacific0"]
+
+# Gestione Admin tramite ID Telegram
+ADMIN_IDS = [7707024030, 5838296578] 
 TEMPO_RISPOSTA = 60
 
 # Inizializzazione MongoDB
@@ -120,7 +121,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     p = players.find_one({"user_id": user.id})
     
-    if p and p.get("game_over") and user.username not in ADMIN_USERS:
+    if p and p.get("game_over") and user.id not in ADMIN_IDS:
         await update.message.reply_text("🚫 *Hai già giocato!*\nLa tua partecipazione è stata registrata.", parse_mode="Markdown")
         return
 
@@ -143,7 +144,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(regole, reply_markup=kb, parse_mode="Markdown")
 
 async def admin_panel_msg(q_or_u):
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("📊 Vedi Classifica", callback_data="adm_view")],[InlineKeyboardButton("🧹 Reset Classifica", callback_data="adm_conf_reset")],[InlineKeyboardButton("🗑️ Svuota Database", callback_data="adm_conf_db")]])
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📊 Vedi Classifica", callback_data="adm_view")],
+        [InlineKeyboardButton("🧹 Reset Classifica", callback_data="adm_conf_reset")],
+        [InlineKeyboardButton("🗑️ Svuota Database", callback_data="adm_conf_db")]
+    ])
     txt = "🛠 *Pannello Admin*"
     if isinstance(q_or_u, Update): await q_or_u.message.reply_text(txt, reply_markup=kb, parse_mode="Markdown")
     else: await q_or_u.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
@@ -151,15 +156,16 @@ async def admin_panel_msg(q_or_u):
 async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id, username = query.from_user.id, query.from_user.username
+    user_id = query.from_user.id
     p = players.find_one({"user_id": user_id})
     if not p: return
     data = query.data
 
     if data.startswith("adm_"):
-        if username not in ADMIN_USERS: return
+        if user_id not in ADMIN_IDS: return
         if data == "adm_view":
-            top = list(players.find().sort("current_q", -1))
+            # Ottimizzazione query classifica
+            top = list(players.find({}, {"username": 1, "current_q": 1}).sort("current_q", -1).limit(50))
             txt = "🏆 *Classifica Totale*\n\n"
             if not top: txt += "Nessun dato."
             else:
@@ -171,19 +177,21 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma reset", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
             await query.edit_message_text("⚠️ Resettare classifica?", reply_markup=kb)
         elif data == "adm_reset_class":
-            players.update_many({}, {"$set": {"current_q": 0, "game_over": True}}); await query.edit_message_text("✅ Reset completato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+            players.update_many({}, {"$set": {"current_q": 0, "game_over": True}})
+            await query.edit_message_text("✅ Reset completato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
         elif data == "adm_conf_db":
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma eliminazione", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
             await query.edit_message_text("⚠️ Eliminare database?", reply_markup=kb)
         elif data == "adm_drop_db":
-            players.delete_many({}); await query.edit_message_text("💥 Database svuotato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+            players.delete_many({})
+            await query.edit_message_text("💥 Database svuotato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
         elif data == "adm_panel": await admin_panel_msg(query)
         return
 
     if data == "game_start": 
         await invia_domanda(update, context, 0)
     elif data.startswith("ans_"):
-        if p.get("game_over") and username not in ADMIN_USERS: return
+        if p.get("game_over") and user_id not in ADMIN_IDS: return
         ans = data.replace("ans_", ""); q = QUESTIONS[p["current_q"]]; await pulisci_aiuti(user_id, context)
         if ans == q["c"]:
             if p["current_q"] == 14:
@@ -211,14 +219,13 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             players.update_one({"user_id": user_id}, {"$push": {"temp_msg_ids": m.message_id}})
 
 async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.username in ADMIN_USERS: await admin_panel_msg(update)
+    if update.effective_user.id in ADMIN_IDS: await admin_panel_msg(update)
 
 # --- SERVER ---
 server = Flask(__name__)
 
 @server.route('/')
 def home():
-    # Risposta minima per ridurre l'output dei log
     return "OK", 200
 
 def run_flask():
