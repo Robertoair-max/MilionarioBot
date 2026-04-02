@@ -16,7 +16,7 @@ logging.getLogger('werkzeug').setLevel(logging.ERROR)
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 
-# ID Admin (Modificati per usare gli ID forniti)
+# ID Admin
 ADMIN_IDS = [7707024030, 5838296578]
 TEMPO_RISPOSTA = 60
 
@@ -25,7 +25,7 @@ client = MongoClient(MONGO_URI)
 db = client.quiz_milionario
 players = db.players
 
-# Indice per classifica veloce
+# Indice per classifica
 players.create_index([("current_q", DESCENDING)])
 
 # --- DATABASE DOMANDE ---
@@ -77,9 +77,11 @@ async def pulisci_aiuti(user_id, context):
 
 async def timeout_scaduto(context: ContextTypes.DEFAULT_TYPE):
     user_id = context.job.user_id
+    p = players.find_one({"user_id": user_id})
+    livello = p.get("current_q", 0)
     players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
     await pulisci_aiuti(user_id, context)
-    try: await context.bot.send_message(user_id, "⏰ *TEMPO SCADUTO!*\nIl gioco è terminato.", parse_mode="Markdown")
+    try: await context.bot.send_message(user_id, f"⏰ *TEMPO SCADUTO!*\nIl gioco è terminato.\n🎯 Livello raggiunto: *{livello}*", parse_mode="Markdown")
     except: pass
 
 async def invia_domanda(update, context, idx, rimosse=None):
@@ -114,7 +116,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     p = players.find_one({"user_id": user.id})
     
     if p and p.get("game_over") and user.id not in ADMIN_IDS:
-        await update.message.reply_text("🚫 *Hai già giocato!*\nLa tua partecipazione è stata registrata.", parse_mode="Markdown")
+        await update.message.reply_text("🚫 *Hai già giocato!*", parse_mode="Markdown")
         return
 
     players.update_one({"user_id": user.id}, {"$set": {"user_id": user.id, "username": user.username, "current_q": 0, "game_over": False, "h": {"5050": True, "pub": True, "tel": True}, "temp_msg_ids": []}}, upsert=True)
@@ -163,7 +165,8 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 for i, x in enumerate(top):
                     name = f"@{x.get('username')}" if x.get('username') else f"ID:{x['user_id']}"
-                    txt += f"{i+1}. {name} - Livello {x.get('current_q', 0) + 1}\n"
+                    # Classifica mostra current_q (risposte indovinate)
+                    txt += f"{i+1}. {name} - Livello {x.get('current_q', 0)}\n"
             await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_conf_reset":
             kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
@@ -186,19 +189,22 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if p.get("game_over") and user_id not in ADMIN_IDS: return
         ans = data.replace("ans_", ""); q = QUESTIONS[p["current_q"]]
         await pulisci_aiuti(user_id, context)
+        
         if ans == q["c"]:
-            if p["current_q"] == 14:
+            nuovo_livello = p["current_q"] + 1
+            if nuovo_livello == 15:
                 if context.job_queue:
                     for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
-                await query.edit_message_text("🏆 *MILIONARIO!*")
-                players.update_one({"user_id": user_id}, {"$set": {"game_over": True, "current_q": 14}})
+                await query.edit_message_text("🏆 *MILIONARIO!*\nHai risposto correttamente a tutte le domande!")
+                players.update_one({"user_id": user_id}, {"$set": {"game_over": True, "current_q": 15}})
             else:
-                players.update_one({"user_id": user_id}, {"$inc": {"current_q": 1}})
-                await invia_domanda(update, context, p["current_q"] + 1)
+                players.update_one({"user_id": user_id}, {"$set": {"current_q": nuovo_livello}})
+                await invia_domanda(update, context, nuovo_livello)
         else:
             if context.job_queue:
                 for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
-            await query.edit_message_text(f"❌ *Sbagliato!* Era {q['c']}.\nFine del gioco.")
+            livello_finale = p["current_q"]
+            await query.edit_message_text(f"❌ *Sbagliato!* Era {q['c']}.\nFine del gioco.\n🎯 Livello raggiunto: *{livello_finale}*")
             players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
     elif data.startswith("h_"):
         tipo = data.replace("h_", ""); q = QUESTIONS[p["current_q"]]
