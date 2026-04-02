@@ -17,7 +17,7 @@ logging.getLogger('werkzeug').setLevel(logging.ERROR)
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 
-# ID Admin: Lady_unknown (7707024030), Tuc0Pacific0 (5838296578)
+# ID Admin verificati
 ADMIN_IDS = [7707024030, 5838296578]
 TEMPO_RISPOSTA = 60
 
@@ -141,16 +141,20 @@ async def admin_panel_msg(q_or_u):
 async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
+    data = query.data
     await query.answer() 
 
-    # Logica per Admin: se il record non esiste, lo ricreiamo per permettere la navigazione "indietro"
+    # --- PROTEZIONE ADMIN ---
+    # Se un Admin clicca un tasto ma il DB è vuoto, ricreiamo il profilo immediatamente
+    if user_id in ADMIN_IDS:
+        players.update_one(
+            {"user_id": user_id},
+            {"$set": {"user_id": user_id, "username": query.from_user.username, "current_q": 0, "game_over": True, "h": {"5050": True, "pub": True, "tel": True}, "temp_msg_ids": []}},
+            upsert=True
+        )
+
     p = players.find_one({"user_id": user_id})
-    if not p and user_id in ADMIN_IDS:
-        players.update_one({"user_id": user_id}, {"$set": {"user_id": user_id, "username": query.from_user.username, "current_q": 0, "game_over": True, "h": {"5050": True, "pub": True, "tel": True}, "temp_msg_ids": []}}, upsert=True)
-        p = players.find_one({"user_id": user_id})
-    
     if not p: return
-    data = query.data
 
     if data.startswith("adm_"):
         if user_id not in ADMIN_IDS: return
@@ -172,10 +176,9 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("⚠️ Svuotare tutto?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ No", callback_data="adm_panel")]]))
         elif data == "adm_drop_db":
             players.delete_many({})
-            # Dopo il drop, ricreiamo l'admin subito per non bloccare il menu
-            players.update_one({"user_id": user_id}, {"$set": {"user_id": user_id, "username": query.from_user.username, "current_q": 0, "game_over": True, "h": {"5050": True, "pub": True, "tel": True}, "temp_msg_ids": []}}, upsert=True)
             await query.edit_message_text("💥 Database svuotato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
-        elif data == "adm_panel": await admin_panel_msg(query)
+        elif data == "adm_panel": 
+            await admin_panel_msg(query)
         return
 
     if data == "game_start": await invia_domanda(update, context, 0)
@@ -186,7 +189,7 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             nuovo_liv = p["current_q"] + 1
             if nuovo_liv == 15:
                 if context.job_queue: [j.schedule_removal() for j in context.job_queue.get_jobs_by_name(str(user_id))]
-                await query.edit_message_text("🏆 *MILIONARIO!*")
+                await query.edit_message_text("🏆 *MILIONARIO!*\n🎯 Risposte corrette: *15*")
                 players.update_one({"user_id": user_id}, {"$set": {"game_over": True, "current_q": 15}})
             else:
                 players.update_one({"user_id": user_id}, {"$set": {"current_q": nuovo_liv}})
