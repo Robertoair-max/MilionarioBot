@@ -3,7 +3,8 @@ import sys
 import random
 import threading
 import logging
-from flask import Flask
+import time
+from flask import Flask, make_response
 from pymongo import MongoClient, DESCENDING
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -16,17 +17,14 @@ logging.getLogger('werkzeug').setLevel(logging.ERROR)
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 
-# ID Admin
+# ID Admin verificati
 ADMIN_IDS = [7707024030, 5838296578]
 TEMPO_RISPOSTA = 60
 
 # Inizializzazione MongoDB
-client = MongoClient(MONGO_URI)
+client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = client.quiz_milionario
 players = db.players
-
-# Indice per classifica
-players.create_index([("current_q", DESCENDING)])
 
 # --- DATABASE DOMANDE ---
 QUESTIONS = [
@@ -47,7 +45,7 @@ QUESTIONS = [
     {"q": "Quale fisico vinse il premio Nobel per la scoperta dell'effetto fotoelettrico?", "o": {"A": "Marie Curie", "B": "Niels Bohr", "C": "Albert Einstein", "D": "Enrico Fermi"}, "c": "C"}
 ]
 
-# --- UTILS ---
+# --- UTILS AIUTI ---
 def genera_pubblico(corretta, idx):
     prob = max(35, 85 - (idx * 4))
     opzioni = ["A", "B", "C", "D"]
@@ -116,7 +114,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     p = players.find_one({"user_id": user.id})
     
     if p and p.get("game_over") and user.id not in ADMIN_IDS:
-        await update.message.reply_text("🚫 *Hai già giocato!*", parse_mode="Markdown")
+        await update.message.reply_text("🚫 *Hai già giocato!*\nLa tua partecipazione è stata registrata.", parse_mode="Markdown")
         return
 
     players.update_one({"user_id": user.id}, {"$set": {"user_id": user.id, "username": user.username, "current_q": 0, "game_over": False, "h": {"5050": True, "pub": True, "tel": True}, "temp_msg_ids": []}}, upsert=True)
@@ -165,21 +163,20 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 for i, x in enumerate(top):
                     name = f"@{x.get('username')}" if x.get('username') else f"ID:{x['user_id']}"
-                    # Classifica mostra current_q (risposte indovinate)
                     txt += f"{i+1}. {name} - Livello {x.get('current_q', 0)}\n"
             await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_conf_reset":
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ No", callback_data="adm_panel")]])
             await query.edit_message_text("⚠️ Resettare la classifica?", reply_markup=kb)
         elif data == "adm_reset_class":
             players.update_many({}, {"$set": {"current_q": 0, "game_over": True}})
-            await query.edit_message_text("✅ Classifica resettata.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+            await query.edit_message_text("✅ Reset fatto.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
         elif data == "adm_conf_db":
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Conferma", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]])
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ No", callback_data="adm_panel")]])
             await query.edit_message_text("⚠️ ELIMINARE TUTTO IL DATABASE?", reply_markup=kb)
         elif data == "adm_drop_db":
             players.delete_many({})
-            await query.edit_message_text("💥 Database svuotato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+            await query.edit_message_text("💥 Svuotato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
         elif data == "adm_panel": await admin_panel_msg(query)
         return
 
@@ -195,7 +192,7 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if nuovo_livello == 15:
                 if context.job_queue:
                     for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
-                await query.edit_message_text("🏆 *MILIONARIO!*\nHai risposto correttamente a tutte le domande!")
+                await query.edit_message_text("🏆 *MILIONARIO!*\n🎯 Livello raggiunto: *15*")
                 players.update_one({"user_id": user_id}, {"$set": {"game_over": True, "current_q": 15}})
             else:
                 players.update_one({"user_id": user_id}, {"$set": {"current_q": nuovo_livello}})
@@ -203,8 +200,7 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             if context.job_queue:
                 for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
-            livello_finale = p["current_q"]
-            await query.edit_message_text(f"❌ *Sbagliato!* Era {q['c']}.\nFine del gioco.\n🎯 Livello raggiunto: *{livello_finale}*")
+            await query.edit_message_text(f"❌ *Sbagliato!* Era {q['c']}.\n🎯 Livello raggiunto: *{p['current_q']}*")
             players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
     elif data.startswith("h_"):
         tipo = data.replace("h_", ""); q = QUESTIONS[p["current_q"]]
@@ -223,15 +219,20 @@ async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- SERVER ---
 server = Flask(__name__)
 @server.route('/')
-def home(): return "OK", 200
+def home():
+    resp = make_response("Bot Active", 200)
+    resp.headers['Connection'] = 'close'
+    return resp
 
 def run_flask():
     server.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)), debug=False, use_reloader=False)
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
+    time.sleep(2)
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(callback_logic))
+    players.create_index([("current_q", DESCENDING)])
     app.run_polling(drop_pending_updates=True)
