@@ -7,6 +7,7 @@ import time
 from flask import Flask, make_response
 from pymongo import MongoClient, DESCENDING
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import constants # Per i limiti di testo
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # --- LOGGING ---
@@ -17,7 +18,7 @@ logging.getLogger('werkzeug').setLevel(logging.ERROR)
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 
-# ID Admin verificati
+# ID Admin: Lady_unknown (7707024030), Tuc0Pacific0 (5838296578)
 ADMIN_IDS = [7707024030, 5838296578]
 TEMPO_RISPOSTA = 60
 
@@ -45,7 +46,7 @@ QUESTIONS = [
     {"q": "Quale fisico vinse il premio Nobel per la scoperta dell'effetto fotoelettrico?", "o": {"A": "Marie Curie", "B": "Niels Bohr", "C": "Albert Einstein", "D": "Enrico Fermi"}, "c": "C"}
 ]
 
-# --- UTILS AIUTI ---
+# --- UTILS ---
 def genera_pubblico(corretta, idx):
     prob = max(35, 85 - (idx * 4))
     opzioni = ["A", "B", "C", "D"]
@@ -79,7 +80,7 @@ async def timeout_scaduto(context: ContextTypes.DEFAULT_TYPE):
     livello = p.get("current_q", 0)
     players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
     await pulisci_aiuti(user_id, context)
-    try: await context.bot.send_message(user_id, f"⏰ *TEMPO SCADUTO!*\nIl gioco è terminato.\n🎯 Livello raggiunto: *{livello}*", parse_mode="Markdown")
+    try: await context.bot.send_message(user_id, f"⏰ *TEMPO SCADUTO!*\nIl gioco è terminato.\n🎯 Risposte corrette: *{livello}*", parse_mode="Markdown")
     except: pass
 
 async def invia_domanda(update, context, idx, rimosse=None):
@@ -112,11 +113,9 @@ async def invia_domanda(update, context, idx, rimosse=None):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     p = players.find_one({"user_id": user.id})
-    
     if p and p.get("game_over") and user.id not in ADMIN_IDS:
-        await update.message.reply_text("🚫 *Hai già giocato!*\nLa tua partecipazione è stata registrata.", parse_mode="Markdown")
+        await update.message.reply_text("🚫 *Hai già giocato!*", parse_mode="Markdown")
         return
-
     players.update_one({"user_id": user.id}, {"$set": {"user_id": user.id, "username": user.username, "current_q": 0, "game_over": False, "h": {"5050": True, "pub": True, "tel": True}, "temp_msg_ids": []}}, upsert=True)
     
     regole = (
@@ -125,13 +124,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Hai **15 domande** per arrivare alla gloria.\n"
         "• Hai **60 secondi** per rispondere a ogni domanda.\n"
         "• Se sbagli o scade il tempo, il gioco finisce.\n\n"
-        "🎭 *AIUTI DISPONIBILI (1 solo uso):*\n"
-        "• **50:50**: Elimina due risposte errate.\n"
-        "• **Pubblico**: Chiedi il parere della sala.\n"
-        "• **Telefonata**: Chiama un amico per un consiglio.\n\n"
-        "Sei pronto a sfidare la sorte?"
+        "🎭 *AIUTI DISPONIBILI:*\n"
+        "• **50:50**, **Pubblico**, **Telefonata** (1 uso ciascuno).\n\n"
+        "Sei pronto?"
     )
-    
     kb = InlineKeyboardMarkup([[InlineKeyboardButton("Gioca 🚀", callback_data="game_start")]])
     await update.message.reply_text(regole, reply_markup=kb, parse_mode="Markdown")
 
@@ -148,6 +144,8 @@ async def admin_panel_msg(q_or_u):
 async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
+    
+    # IMPORTANTE: Rispondi subito al callback per evitare il "bottone morto"
     await query.answer() 
 
     p = players.find_one({"user_id": user_id})
@@ -157,59 +155,55 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("adm_"):
         if user_id not in ADMIN_IDS: return
         if data == "adm_view":
+            # Proiezione per velocità e limit 50 per evitare messaggi troppo lunghi
             top = list(players.find({}, {"username": 1, "current_q": 1, "user_id": 1}).sort("current_q", -1).limit(50))
-            txt = "🏆 *TOP 50 GIOCATORI*\n\n"
-            if not top: txt += "Nessun dato registrato."
+            txt = "🏆 *CLASSIFICA (Risposte Corrette)*\n\n"
+            if not top: txt += "Nessun dato."
             else:
                 for i, x in enumerate(top):
                     name = f"@{x.get('username')}" if x.get('username') else f"ID:{x['user_id']}"
-                    txt += f"{i+1}. {name} - Livello {x.get('current_q', 0)}\n"
+                    txt += f"{i+1}. {name} — Livello: *{x.get('current_q', 0)}*\n"
+            
+            # Controllo lunghezza messaggio Telegram (max 4096 char)
+            if len(txt) > 4000: txt = txt[:4000] + "\n..."
             await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_conf_reset":
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ No", callback_data="adm_panel")]])
-            await query.edit_message_text("⚠️ Resettare la classifica?", reply_markup=kb)
+            await query.edit_message_text("⚠️ Resettare classifica?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ No", callback_data="adm_panel")]]))
         elif data == "adm_reset_class":
             players.update_many({}, {"$set": {"current_q": 0, "game_over": True}})
-            await query.edit_message_text("✅ Reset fatto.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+            await query.edit_message_text("✅ Reset completato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
         elif data == "adm_conf_db":
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ No", callback_data="adm_panel")]])
-            await query.edit_message_text("⚠️ ELIMINARE TUTTO IL DATABASE?", reply_markup=kb)
+            await query.edit_message_text("⚠️ Svuotare tutto?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_drop_db")], [InlineKeyboardButton("❌ No", callback_data="adm_panel")]]))
         elif data == "adm_drop_db":
-            players.delete_many({})
-            await query.edit_message_text("💥 Svuotato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+            players.delete_many({}); await query.edit_message_text("💥 Database svuotato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
         elif data == "adm_panel": await admin_panel_msg(query)
         return
 
-    if data == "game_start": 
-        await invia_domanda(update, context, 0)
+    if data == "game_start": await invia_domanda(update, context, 0)
     elif data.startswith("ans_"):
         if p.get("game_over") and user_id not in ADMIN_IDS: return
-        ans = data.replace("ans_", ""); q = QUESTIONS[p["current_q"]]
-        await pulisci_aiuti(user_id, context)
-        
+        ans = data.replace("ans_", ""); q = QUESTIONS[p["current_q"]]; await pulisci_aiuti(user_id, context)
         if ans == q["c"]:
-            nuovo_livello = p["current_q"] + 1
-            if nuovo_livello == 15:
-                if context.job_queue:
-                    for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
-                await query.edit_message_text("🏆 *MILIONARIO!*\n🎯 Livello raggiunto: *15*")
+            nuovo_liv = p["current_q"] + 1
+            if nuovo_liv == 15:
+                if context.job_queue: [j.schedule_removal() for j in context.job_queue.get_jobs_by_name(str(user_id))]
+                await query.edit_message_text("🏆 *MILIONARIO!*\n🎯 Risposte corrette: *15*")
                 players.update_one({"user_id": user_id}, {"$set": {"game_over": True, "current_q": 15}})
             else:
-                players.update_one({"user_id": user_id}, {"$set": {"current_q": nuovo_livello}})
-                await invia_domanda(update, context, nuovo_livello)
+                players.update_one({"user_id": user_id}, {"$set": {"current_q": nuovo_liv}})
+                await invia_domanda(update, context, nuovo_liv)
         else:
-            if context.job_queue:
-                for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
-            await query.edit_message_text(f"❌ *Sbagliato!* Era {q['c']}.\n🎯 Livello raggiunto: *{p['current_q']}*")
+            if context.job_queue: [j.schedule_removal() for j in context.job_queue.get_jobs_by_name(str(user_id))]
+            await query.edit_message_text(f"❌ *Sbagliato!* Era {q['c']}.\n🎯 Risposte corrette: *{p['current_q']}*")
             players.update_one({"user_id": user_id}, {"$set": {"game_over": True}})
     elif data.startswith("h_"):
         tipo = data.replace("h_", ""); q = QUESTIONS[p["current_q"]]
         players.update_one({"user_id": user_id}, {"$set": {f"h.{tipo}": False}})
+        txt = genera_pubblico(q["c"], p["current_q"]) if tipo == "pub" else genera_tel(q["c"], p["current_q"])
         if tipo == "5050":
             rimosse = random.sample([k for k in ["A", "B", "C", "D"] if k != q["c"]], 2)
             await invia_domanda(update, context, p["current_q"], rimosse)
         else:
-            txt = genera_pubblico(q["c"], p["current_q"]) if tipo == "pub" else genera_tel(q["c"], p["current_q"])
             m = await context.bot.send_message(user_id, txt, parse_mode="Markdown")
             players.update_one({"user_id": user_id}, {"$push": {"temp_msg_ids": m.message_id}})
 
@@ -220,7 +214,7 @@ async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 server = Flask(__name__)
 @server.route('/')
 def home():
-    resp = make_response("Bot Active", 200)
+    resp = make_response("Online", 200)
     resp.headers['Connection'] = 'close'
     return resp
 
@@ -234,5 +228,8 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(callback_logic))
+    
+    # Assicurati che l'indice esista all'avvio
     players.create_index([("current_q", DESCENDING)])
+    
     app.run_polling(drop_pending_updates=True)
