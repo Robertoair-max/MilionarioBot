@@ -4,14 +4,17 @@ import random
 import threading
 import logging
 import time
-from flask import Flask, make_response
+import asyncio
+from flask import Flask
 from pymongo import MongoClient, DESCENDING
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # --- LOGGING ---
 logging.basicConfig(level=logging.ERROR)
-logging.getLogger('werkzeug').setLevel(logging.ERROR)
+# Disabilita i log di Flask (Werkzeug) per risparmiare CPU e pulire la console
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 # --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -185,12 +188,12 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 txt += f"{i+1}. {name} — Risposte: *{x.get('current_q', 0)}*\n"
             await query.edit_message_text(txt or "Nessun dato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_conf_reset":
-            await query.edit_message_text("⚠️ Reset classifica?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ No", callback_data="adm_panel")]]))
+            await query.edit_message_text("⚠️ Reset Classifica?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ No", callback_data="adm_panel")]]))
         elif data == "adm_reset_class":
             players.update_many({}, {"$set": {"current_q": 0, "game_over": True}})
             await query.edit_message_text("✅ Reset fatto.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
         elif data == "adm_conf_db":
-            await query.edit_message_text("⚠️ Reset database?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_db_drop")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]]), parse_mode="Markdown")
+            await query.edit_message_text("⚠️ Reset Database?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_db_drop")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_db_drop":
             players.drop()
             await query.edit_message_text("✅ Reset fatto.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
@@ -199,8 +202,8 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_panel_msg(q_or_u):
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 Classifica", callback_data="adm_view")],
-        [InlineKeyboardButton("🧹 Reset classifica", callback_data="adm_conf_reset")],
-        [InlineKeyboardButton("🧹 Reset database", callback_data="adm_conf_db")]
+        [InlineKeyboardButton("🧹 Reset Classifica", callback_data="adm_conf_reset")],
+        [InlineKeyboardButton("🧹 Reset Database", callback_data="adm_conf_db")]
     ])
     txt = "🛠 *Pannello Admin*"
     if isinstance(q_or_u, Update): await q_or_u.message.reply_text(txt, reply_markup=kb, parse_mode="Markdown")
@@ -209,23 +212,30 @@ async def admin_panel_msg(q_or_u):
 async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id in ADMIN_IDS: await admin_panel_msg(update)
 
-# --- SERVER ---
-server = Flask(__name__)
-@server.route('/')
-def home():
-    r = make_response("OK", 200)
-    r.headers['Connection'] = 'close'
-    return r
+# --- SERVER WEB (Struttura identica al secondo codice) ---
+webapp = Flask(__name__)
+
+@webapp.route('/')
+def health():
+    return "OK", 200
 
 def run_flask():
-    server.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)), debug=False, use_reloader=False)
+    port = int(os.environ.get('PORT', 10000))
+    try:
+        webapp.run(host='0.0.0.0', port=port, threaded=True, debug=False, use_reloader=False)
+    except Exception as e:
+        pass
 
+# --- MAIN ---
 if __name__ == "__main__":
+    # Avvio del thread Flask prima del bot
     threading.Thread(target=run_flask, daemon=True).start()
     time.sleep(2)
+    
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(callback_logic))
+    
     players.create_index([("current_q", DESCENDING)])
     app.run_polling(drop_pending_updates=True)
