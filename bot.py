@@ -31,21 +31,23 @@ players = db.players
 
 # --- DATABASE DOMANDE ---
 QUESTIONS = [
-    {"q": "Quale tra questi frutti cresce a grappoli?", "o": {"A": "Mela", "B": "Pera", "C": "Uva", "D": "Pesca"}, "c": "C"},
-    {"q": "Quanti giorni ci sono in un anno bisestile?", "o": {"A": "364", "B": "365", "C": "366", "D": "360"}, "c": "C"},
-    {"q": "Qual è il colore ottenuto mescolando blu e giallo?", "o": {"A": "Verde", "B": "Viola", "C": "Arancione", "D": "Marrone"}, "c": "A"},
-    {"q": "In quale città si trova il Colosseo?", "o": {"A": "Milano", "B": "Roma", "C": "Firenze", "D": "Venezia"}, "c": "B"},
-    {"q": "Qual è il pianeta più vicino al Sole?", "o": {"A": "Marte", "B": "Venere", "C": "Mercurio", "D": "Terra"}, "c": "C"},
-    {"q": "Quale animale è il simbolo della saggezza?", "o": {"A": "Leone", "B": "Civetta", "C": "Volpe", "D": "Cane"}, "c": "B"},
-    {"q": "Chi è l'attuale Re del Regno Unito (2024)?", "o": {"A": "Guglielmo", "B": "Filippo", "C": "Carlo III", "D": "Enrico"}, "c": "C"},
-    {"q": "In che nazione è nato il celebre Wolfgang Amadeus Mozart?", "o": {"A": "Germania", "B": "Austria", "C": "Svizzera", "D": "Francia"}, "c": "B"},
-    {"q": "Quale organo umano è responsabile della produzione di insulina?", "o": {"A": "Fegato", "B": "Reni", "C": "Pancreas", "D": "Milza"}, "c": "C"},
-    {"q": "Qual è la montagna più alta d'Europa?", "o": {"A": "Monte Bianco", "B": "Monte Rosa", "C": "Cervino", "D": "Gran Sasso"}, "c": "A"},
-    {"q": "Chi scrisse il romanzo 'Il nome della rosa'?", "o": {"A": "Italo Calvino", "B": "Umberto Eco", "C": "Dante Alighieri", "D": "Alessandro Manzoni"}, "c": "B"},
-    {"q": "Quanti sono i tasti bianchi e neri in un pianoforte standard?", "o": {"A": "76", "B": "88", "C": "92", "D": "104"}, "c": "B"},
-    {"q": "In quale città fu firmata la Costituzione degli Stati Uniti?", "o": {"A": "New York", "B": "Washington D.C.", "C": "Philadelphia", "D": "Boston"}, "c": "C"},
-    {"q": "Qual è il nome dell'unico satellite naturale della Terra?", "o": {"A": "Europa", "B": "Luna", "C": "Io", "D": "Titano"}, "c": "B"},
-    {"q": "Quale fisico vinse il premio Nobel per la scoperta dell'effetto fotoelettrico?", "o": {"A": "Marie Curie", "B": "Niels Bohr", "C": "Albert Einstein", "D": "Enrico Fermi"}, "c": "C"}
+    {"q": "Qual è il colore del cielo in una giornata di sole?", "o": {"A": "Verde", "B": "Rosso", "C": "Azzurro", "D": "Giallo"}, "c": "C"},
+    {"q": "Quante zampe ha un ragno?", "o": {"A": "4", "B": "6", "C": "8", "D": "10"}, "c": "C"},
+    {"q": "Qual è la capitale d'Italia?", "o": {"A": "Milano", "B": "Roma", "C": "Napoli", "D": "Torino"}, "c": "B"},
+    {"q": "Come si chiama il giovane burattino di legno di Collodi?", "o": {"A": "Lucignolo", "B": "Geppetto", "C": "Pinocchio", "D": "Grillo"}, "c": "C"},
+    {"q": "Quale animale è noto per la sua lentaggine?", "o": {"A": "Lepre", "B": "Lumaca", "C": "Ghepardo", "D": "Lupo"}, "c": "B"},
+
+    {"q": "In quale continente si trova il fiume Rio delle Amazzoni?", "o": {"A": "Africa", "B": "Asia", "C": "Sud America", "D": "Australia"}, "c": "C"},
+    {"q": "Quale pianeta è famoso per i suoi grandi anelli visibili?", "o": {"A": "Marte", "B": "Nettuno", "C": "Saturno", "D": "Urano"}, "c": "C"},
+    {"q": "Chi è l'autore della celebre opera 'La Gioconda'?", "o": {"A": "Michelangelo", "B": "Raffaello", "C": "Leonardo da Vinci", "D": "Caravaggio"}, "c": "C"},
+    {"q": "Qual è il metallo più leggero esistente in natura?", "o": {"A": "Oro", "B": "Litio", "C": "Ferro", "D": "Piombo"}, "c": "B"},
+    {"q": "In che anno è scoppiata la Prima Guerra Mondiale?", "o": {"A": "1914", "B": "1918", "C": "1939", "D": "1890"}, "c": "A"},
+
+    {"q": "Qual è la capitale dell'Australia?", "o": {"A": "Sydney", "B": "Melbourne", "C": "Canberra", "D": "Perth"}, "c": "C"},
+    {"q": "Quale di questi elementi ha come simbolo chimico 'K'?", "o": {"A": "Cripton", "B": "Potassio", "C": "Calcio", "D": "Cobalto"}, "c": "B"},
+    {"q": "In quale anno è stato pubblicato il romanzo 'I promessi sposi' (edizione definitiva)?", "o": {"A": "1821", "B": "1827", "C": "1840", "D": "1850"}, "c": "C"},
+    {"q": "Chi fu il primo presidente della Repubblica Italiana?", "o": {"A": "Enrico De Nicola", "B": "Luigi Einaudi", "C": "Alcide De Gasperi", "D": "Sandro Pertini"}, "c": "A"},
+    {"q": "Quale particella atomica ha carica elettrica positiva?", "o": {"A": "Elettrone", "B": "Neutrone", "C": "Protone", "D": "Fotone"}, "c": "C"}
 ]
 
 # --- UTILS ---
