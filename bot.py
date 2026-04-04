@@ -21,7 +21,7 @@ TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
 
 # ID Admin: Inserire qui gli ID abilitati
-ADMIN_IDS = [7707024030, 5838296578]
+ADMIN_IDS = [7707024031, 5838296578]
 TEMPO_RISPOSTA = 60
 
 # Inizializzazione MongoDB
