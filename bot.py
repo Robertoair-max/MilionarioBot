@@ -143,7 +143,7 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer() 
 
     p = players.find_one({"user_id": user_id})
-    if not p: return
+    if not p and not data.startswith("adm_"): return
 
     if data == "game_start": 
         await invia_domanda(update, context, 0)
@@ -189,10 +189,19 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif data == "adm_reset_class":
             players.update_many({}, {"$set": {"current_q": 0, "game_over": True}})
             await query.edit_message_text("✅ Reset fatto.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
+        elif data == "adm_conf_db":
+            await query.edit_message_text("⚠️ Reset database?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_db_drop")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]]), parse_mode="Markdown")
+        elif data == "adm_db_drop":
+            players.drop()
+            await query.edit_message_text("✅ Reset fatto.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_panel": await admin_panel_msg(query)
 
 async def admin_panel_msg(q_or_u):
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("📊 Classifica", callback_data="adm_view")],[InlineKeyboardButton("🧹 Reset Classifica", callback_data="adm_conf_reset")]])
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📊 Classifica", callback_data="adm_view")],
+        [InlineKeyboardButton("🧹 Reset classifica", callback_data="adm_conf_reset")],
+        [InlineKeyboardButton("🧹 Reset database", callback_data="adm_conf_db")]
+    ])
     txt = "🛠 *Pannello Admin*"
     if isinstance(q_or_u, Update): await q_or_u.message.reply_text(txt, reply_markup=kb, parse_mode="Markdown")
     else: await q_or_u.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
