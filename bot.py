@@ -12,42 +12,36 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 
 # --- LOGGING ---
 logging.basicConfig(level=logging.ERROR)
-# Disabilita i log di Flask (Werkzeug) per risparmiare CPU e pulire la console
 log = logging.getLogger('werkzeug')
 log.setLevel(logging.ERROR)
 
 # --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-
-# ID Admin: Inserire qui gli ID abilitati
 ADMIN_IDS = [7707024030, 5838296578]
 TEMPO_RISPOSTA = 60
 
-# Inizializzazione MongoDB
 client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = client.quiz_milionario
 players = db.players
 
-# --- DATABASE DOMANDE ---
+# --- DATABASE DOMANDE (NUOVE 15 DOMANDE IN ORDINE DI DIFFICOLTÀ) ---
 QUESTIONS = [
-    {"q": "Qual è il colore del cielo in una giornata di sole?", "o": {"A": "Verde", "B": "Rosso", "C": "Azzurro", "D": "Giallo"}, "c": "C"},
-    {"q": "Quante zampe ha un ragno?", "o": {"A": "4", "B": "6", "C": "8", "D": "10"}, "c": "C"},
-    {"q": "Qual è la capitale d'Italia?", "o": {"A": "Milano", "B": "Roma", "C": "Napoli", "D": "Torino"}, "c": "B"},
-    {"q": "Come si chiama il giovane burattino di legno di Collodi?", "o": {"A": "Lucignolo", "B": "Geppetto", "C": "Pinocchio", "D": "Grillo"}, "c": "C"},
-    {"q": "Quale animale è noto per la sua lentaggine?", "o": {"A": "Lepre", "B": "Lumaca", "C": "Ghepardo", "D": "Lupo"}, "c": "B"},
-
-    {"q": "In quale continente si trova il fiume Rio delle Amazzoni?", "o": {"A": "Africa", "B": "Asia", "C": "Sud America", "D": "Australia"}, "c": "C"},
-    {"q": "Quale pianeta è famoso per i suoi grandi anelli visibili?", "o": {"A": "Marte", "B": "Nettuno", "C": "Saturno", "D": "Urano"}, "c": "C"},
-    {"q": "Chi è l'autore della celebre opera 'La Gioconda'?", "o": {"A": "Michelangelo", "B": "Raffaello", "C": "Leonardo da Vinci", "D": "Caravaggio"}, "c": "C"},
-    {"q": "Qual è il metallo più leggero esistente in natura?", "o": {"A": "Oro", "B": "Litio", "C": "Ferro", "D": "Piombo"}, "c": "B"},
-    {"q": "In che anno è scoppiata la Prima Guerra Mondiale?", "o": {"A": "1914", "B": "1918", "C": "1939", "D": "1890"}, "c": "A"},
-
-    {"q": "Qual è la capitale dell'Australia?", "o": {"A": "Sydney", "B": "Melbourne", "C": "Canberra", "D": "Perth"}, "c": "C"},
-    {"q": "Quale di questi elementi ha come simbolo chimico 'K'?", "o": {"A": "Cripton", "B": "Potassio", "C": "Calcio", "D": "Cobalto"}, "c": "B"},
-    {"q": "In quale anno è stato pubblicato il romanzo 'I promessi sposi' (edizione definitiva)?", "o": {"A": "1821", "B": "1827", "C": "1840", "D": "1850"}, "c": "C"},
-    {"q": "Chi fu il primo presidente della Repubblica Italiana?", "o": {"A": "Enrico De Nicola", "B": "Luigi Einaudi", "C": "Alcide De Gasperi", "D": "Sandro Pertini"}, "c": "A"},
-    {"q": "Quale particella atomica ha carica elettrica positiva?", "o": {"A": "Elettrone", "B": "Neutrone", "C": "Protone", "D": "Fotone"}, "c": "C"}
+    {"q": "Quale di questi è un frutto?", "o": {"A": "Carota", "B": "Mela", "C": "Patata", "D": "Zucchina"}, "c": "B"},
+    {"q": "Quanti mesi hanno 28 giorni?", "o": {"A": "1", "B": "6", "C": "Tutti", "D": " nessuno"}, "c": "C"},
+    {"q": "Quale tra questi animali è un mammifero?", "o": {"A": "Squalo", "B": "Delfino", "C": "Tartaruga", "D": "Aquila"}, "c": "B"},
+    {"q": "In quale città si trova la Torre Eiffel?", "o": {"A": "Berlino", "B": "Londra", "C": "Parigi", "D": "Madrid"}, "c": "C"},
+    {"q": "Qual è il colore che si ottiene mescolando giallo e blu?", "o": {"A": "Verde", "B": "Arancione", "C": "Viola", "D": "Marrone"}, "c": "A"},
+    {"q": "Quale pianeta è soprannominato il 'Pianeta Rosso'?", "o": {"A": "Venere", "B": "Giove", "C": "Marte", "D": "Saturno"}, "c": "C"},
+    {"q": "Chi ha scritto la 'Divina Commedia'?", "o": {"A": "Francesco Petrarca", "B": "Dante Alighieri", "C": "Giovanni Boccaccio", "D": "Alessandro Manzoni"}, "c": "B"},
+    {"q": "Qual è il simbolo chimico dell'Oro?", "o": {"A": "Ag", "B": "Fe", "C": "Au", "D": "Pb"}, "c": "C"},
+    {"q": "Quale organo del corpo umano produce l'insulina?", "o": {"A": "Fegato", "B": "Reni", "C": "Pancreas", "D": "Cuore"}, "c": "C"},
+    {"q": "In che anno è caduto il muro di Berlino?", "o": {"A": "1985", "B": "1989", "C": "1991", "D": "1978"}, "c": "B"},
+    {"q": "Qual è la capitale del Canada?", "o": {"A": "Toronto", "B": "Montreal", "C": "Ottawa", "D": "Vancouver"}, "c": "C"},
+    {"q": "Chi dipinse 'La ragazza col turbante' (o 'La ragazza con l'orecchino di perla')?", "o": {"A": "Rembrandt", "B": "Vermeer", "C": "Van Gogh", "D": "Rubens"}, "c": "B"},
+    {"q": "Quale di questi scienziati formulò la legge della gravitazione universale?", "o": {"A": "Galileo Galilei", "B": "Isaac Newton", "C": "Nikola Tesla", "D": "Charles Darwin"}, "c": "B"},
+    {"q": "Qual è lo stretto che separa l'Europa dall'Africa?", "o": {"A": "Stretto di Gibilterra", "B": "Stretto di Magellano", "C": "Stretto di Bering", "D": "Stretto di Messina"}, "c": "A"},
+    {"q": "Quale gas costituisce circa il 78% dell'atmosfera terrestre?", "o": {"A": "Ossigeno", "B": "Anidride Carbonica", "C": "Azoto", "D": "Idrogeno"}, "c": "C"}
 ]
 
 # --- UTILS ---
@@ -92,24 +86,20 @@ async def invia_domanda(update, context, idx, rimosse=None):
     p = players.find_one({"user_id": user_id})
     if not p or idx >= len(QUESTIONS): return
     q = QUESTIONS[idx]
-    
     if context.job_queue:
         for j in context.job_queue.get_jobs_by_name(str(user_id)): j.schedule_removal()
         context.job_queue.run_once(timeout_scaduto, TEMPO_RISPOSTA, user_id=user_id, name=str(user_id))
-    
     txt = f"❓ *DOMANDA {idx+1}/15*\n\n{q['q']}\n\n"
     for k, v in q['o'].items():
         if rimosse and k in rimosse: continue
         txt += f"*{k}*: {v}\n"
     txt += f"[\u200c](http://{time.time()})"
-
     r1 = [InlineKeyboardButton(f"Risp. {k}", callback_data=f"ans_{k}") for k in ["A", "B"] if not (rimosse and k in rimosse)]
     r2 = [InlineKeyboardButton(f"Risp. {k}", callback_data=f"ans_{k}") for k in ["C", "D"] if not (rimosse and k in rimosse)]
     rh = []
     if p["h"].get("5050"): rh.append(InlineKeyboardButton("50:50 🎭", callback_data="h_5050"))
     if p["h"].get("pub"): rh.append(InlineKeyboardButton("Pubblico 👥", callback_data="h_pub"))
     if p["h"].get("tel"): rh.append(InlineKeyboardButton("Tel 📞", callback_data="h_tel"))
-    
     kb = InlineKeyboardMarkup([r1, r2, rh])
     try:
         if update.callback_query: await update.callback_query.edit_message_text(txt, reply_markup=kb, parse_mode="Markdown")
@@ -123,9 +113,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if p and p.get("game_over") and user.id not in ADMIN_IDS:
         await update.message.reply_text("🚫 *Hai già giocato!*\nLa tua partecipazione è stata registrata.", parse_mode="Markdown")
         return
-
     players.update_one({"user_id": user.id}, {"$set": {"user_id": user.id, "username": user.username, "current_q": 0, "game_over": False, "h": {"5050": True, "pub": True, "tel": True}, "temp_msg_ids": []}}, upsert=True)
-    
     regole = (
         "🏆 *BENVENUTO AL CHI VUOL ESSERE MILIONARIO!*\n\n"
         "📜 *REGOLE DEL GIOCO:*\n"
@@ -146,7 +134,6 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     data = query.data
     await query.answer() 
-
     p = players.find_one({"user_id": user_id})
     if not p and not data.startswith("adm_"): return
 
@@ -183,29 +170,25 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("adm_"):
         if user_id not in ADMIN_IDS: return
         if data == "adm_view":
-            top = list(players.find({}, {"username": 1, "current_q": 1, "user_id": 1}).sort("current_q", -1).limit(50))
-            txt = "🏆 *CLASSIFICA*\n\n"
+            await query.edit_message_text("⌛ *Caricamento classifica in corso...*", parse_mode="Markdown")
+            top = list(players.find({}, {"username": 1, "current_q": 1, "user_id": 1, "_id": 0}).sort("current_q", -1))
+            txt = "🏆 *CLASSIFICA COMPLETA*\n\n"
             for i, x in enumerate(top):
                 name = f"@{x.get('username')}" if x.get('username') else f"ID:{x['user_id']}"
                 txt += f"{i+1}. {name} — Risposte: *{x.get('current_q', 0)}*\n"
-            await query.edit_message_text(txt or "Nessun dato.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
+            if not top: txt = "📭 Nessun dato."
+            await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_conf_reset":
-            await query.edit_message_text("⚠️ Reset Classifica?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_reset_class")], [InlineKeyboardButton("❌ No", callback_data="adm_panel")]]))
-        elif data == "adm_reset_class":
-            players.update_many({}, {"$set": {"current_q": 0, "game_over": True}})
-            await query.edit_message_text("✅ Reset fatto.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]))
-        elif data == "adm_conf_db":
-            await query.edit_message_text("⚠️ Reset Database?", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì", callback_data="adm_db_drop")], [InlineKeyboardButton("❌ Annulla", callback_data="adm_panel")]]), parse_mode="Markdown")
+            await query.edit_message_text("⚠️ *RESET TOTALE?*\nEliminerà tutti i giocatori e la classifica.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì, Reset Tutto", callback_data="adm_db_drop")], [InlineKeyboardButton("❌ No", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_db_drop":
             players.drop()
-            await query.edit_message_text("✅ Reset fatto.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
+            await query.edit_message_text("✅ *DATABASE RESETTATO!*", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_panel": await admin_panel_msg(query)
 
 async def admin_panel_msg(q_or_u):
     kb = InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 Classifica", callback_data="adm_view")],
-        [InlineKeyboardButton("🧹 Reset Classifica", callback_data="adm_conf_reset")],
-        [InlineKeyboardButton("🧹 Reset Database", callback_data="adm_conf_db")]
+        [InlineKeyboardButton("🧹 Reset Totale (DB)", callback_data="adm_conf_reset")]
     ])
     txt = "🛠 *Pannello Admin*"
     if isinstance(q_or_u, Update): await q_or_u.message.reply_text(txt, reply_markup=kb, parse_mode="Markdown")
@@ -214,30 +197,22 @@ async def admin_panel_msg(q_or_u):
 async def admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id in ADMIN_IDS: await admin_panel_msg(update)
 
-# --- SERVER WEB (Struttura identica al secondo codice) ---
+# --- SERVER WEB ---
 webapp = Flask(__name__)
-
 @webapp.route('/')
-def health():
-    return "OK", 200
-
+def health(): return "OK", 200
 def run_flask():
     port = int(os.environ.get('PORT', 10000))
-    try:
-        webapp.run(host='0.0.0.0', port=port, threaded=True, debug=False, use_reloader=False)
-    except Exception as e:
-        pass
+    try: webapp.run(host='0.0.0.0', port=port, threaded=True, debug=False, use_reloader=False)
+    except: pass
 
 # --- MAIN ---
 if __name__ == "__main__":
-    # Avvio del thread Flask prima del bot
     threading.Thread(target=run_flask, daemon=True).start()
     time.sleep(2)
-    
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(callback_logic))
-    
     players.create_index([("current_q", DESCENDING)])
     app.run_polling(drop_pending_updates=True)
