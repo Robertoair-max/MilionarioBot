@@ -18,6 +18,7 @@ log.setLevel(logging.ERROR)
 # --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
+# ID numerici per garantire il corretto funzionamento dei controlli
 ADMIN_IDS = [7707024030, 5838296578]
 TEMPO_RISPOSTA = 60
 
@@ -25,7 +26,7 @@ client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = client.quiz_milionario
 players = db.players
 
-# --- DATABASE DOMANDE (NUOVE 15 DOMANDE IN ORDINE DI DIFFICOLTÀ) ---
+# --- DATABASE DOMANDE ---
 QUESTIONS = [
     {"q": "Quale di questi è un frutto?", "o": {"A": "Carota", "B": "Mela", "C": "Patata", "D": "Zucchina"}, "c": "B"},
     {"q": "Quanti mesi hanno 28 giorni?", "o": {"A": "1", "B": "6", "C": "Tutti", "D": " nessuno"}, "c": "C"},
@@ -133,13 +134,16 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data
-    await query.answer() 
+    # Risposta immediata per evitare caricamento infinito sul pulsante
+    if not data.startswith("ans_"): await query.answer() 
+    
     p = players.find_one({"user_id": user_id})
     if not p and not data.startswith("adm_"): return
 
     if data == "game_start": 
         await invia_domanda(update, context, 0)
     elif data.startswith("ans_"):
+        await query.answer() # Risposta al callback per le opzioni
         if p.get("game_over") and user_id not in ADMIN_IDS: return
         ans = data.replace("ans_", ""); q = QUESTIONS[p["current_q"]]; await pulisci_aiuti(user_id, context)
         if ans == q["c"]:
@@ -170,9 +174,9 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("adm_"):
         if user_id not in ADMIN_IDS: return
         if data == "adm_view":
-            await query.edit_message_text("⌛ *Caricamento classifica in corso...*", parse_mode="Markdown")
-            top = list(players.find({}, {"username": 1, "current_q": 1, "user_id": 1, "_id": 0}).sort("current_q", -1))
-            txt = "🏆 *CLASSIFICA COMPLETA*\n\n"
+            await query.edit_message_text("⌛ *Caricamento classifica...*", parse_mode="Markdown")
+            top = list(players.find({}, {"username": 1, "current_q": 1, "user_id": 1, "_id": 0}).sort("current_q", -1).limit(50))
+            txt = "🏆 *CLASSIFICA GIOCATORI*\n\n"
             for i, x in enumerate(top):
                 name = f"@{x.get('username')}" if x.get('username') else f"ID:{x['user_id']}"
                 txt += f"{i+1}. {name} — Risposte: *{x.get('current_q', 0)}*\n"
@@ -182,6 +186,7 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("⚠️ *RESET TOTALE?*\nEliminerà tutti i giocatori e la classifica.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì, Reset Tutto", callback_data="adm_db_drop")], [InlineKeyboardButton("❌ No", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_db_drop":
             players.drop()
+            players.create_index([("current_q", DESCENDING)]) # Ricrea l'indice dopo il drop
             await query.edit_message_text("✅ *DATABASE RESETTATO!*", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_panel": await admin_panel_msg(query)
 
@@ -214,5 +219,6 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(callback_logic))
+    # Creazione indice per prestazioni ottimali della classifica
     players.create_index([("current_q", DESCENDING)])
     app.run_polling(drop_pending_updates=True)
