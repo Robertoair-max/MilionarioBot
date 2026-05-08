@@ -18,7 +18,6 @@ log.setLevel(logging.ERROR)
 # --- CONFIGURAZIONE ---
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-# ID numerici per garantire il corretto funzionamento dei controlli
 ADMIN_IDS = [7707024030, 5838296578]
 TEMPO_RISPOSTA = 60
 
@@ -28,21 +27,21 @@ players = db.players
 
 # --- DATABASE DOMANDE ---
 QUESTIONS = [
-    {"q": "Quale di questi è un frutto?", "o": {"A": "Carota", "B": "Mela", "C": "Patata", "D": "Zucchina"}, "c": "B"},
-    {"q": "Quanti mesi hanno 28 giorni?", "o": {"A": "1", "B": "6", "C": "Tutti", "D": " nessuno"}, "c": "C"},
-    {"q": "Quale tra questi animali è un mammifero?", "o": {"A": "Squalo", "B": "Delfino", "C": "Tartaruga", "D": "Aquila"}, "c": "B"},
-    {"q": "In quale città si trova la Torre Eiffel?", "o": {"A": "Berlino", "B": "Londra", "C": "Parigi", "D": "Madrid"}, "c": "C"},
-    {"q": "Qual è il colore che si ottiene mescolando giallo e blu?", "o": {"A": "Verde", "B": "Arancione", "C": "Viola", "D": "Marrone"}, "c": "A"},
-    {"q": "Quale pianeta è soprannominato il 'Pianeta Rosso'?", "o": {"A": "Venere", "B": "Giove", "C": "Marte", "D": "Saturno"}, "c": "C"},
-    {"q": "Chi ha scritto la 'Divina Commedia'?", "o": {"A": "Francesco Petrarca", "B": "Dante Alighieri", "C": "Giovanni Boccaccio", "D": "Alessandro Manzoni"}, "c": "B"},
-    {"q": "Qual è il simbolo chimico dell'Oro?", "o": {"A": "Ag", "B": "Fe", "C": "Au", "D": "Pb"}, "c": "C"},
-    {"q": "Quale organo del corpo umano produce l'insulina?", "o": {"A": "Fegato", "B": "Reni", "C": "Pancreas", "D": "Cuore"}, "c": "C"},
-    {"q": "In che anno è caduto il muro di Berlino?", "o": {"A": "1985", "B": "1989", "C": "1991", "D": "1978"}, "c": "B"},
-    {"q": "Qual è la capitale del Canada?", "o": {"A": "Toronto", "B": "Montreal", "C": "Ottawa", "D": "Vancouver"}, "c": "C"},
-    {"q": "Chi dipinse 'La ragazza col turbante' (o 'La ragazza con l'orecchino di perla')?", "o": {"A": "Rembrandt", "B": "Vermeer", "C": "Van Gogh", "D": "Rubens"}, "c": "B"},
-    {"q": "Quale di questi scienziati formulò la legge della gravitazione universale?", "o": {"A": "Galileo Galilei", "B": "Isaac Newton", "C": "Nikola Tesla", "D": "Charles Darwin"}, "c": "B"},
-    {"q": "Qual è lo stretto che separa l'Europa dall'Africa?", "o": {"A": "Stretto di Gibilterra", "B": "Stretto di Magellano", "C": "Stretto di Bering", "D": "Stretto di Messina"}, "c": "A"},
-    {"q": "Quale gas costituisce circa il 78% dell'atmosfera terrestre?", "o": {"A": "Ossigeno", "B": "Anidride Carbonica", "C": "Azoto", "D": "Idrogeno"}, "c": "C"}
+    {"q": "Quale di questi è un metallo prezioso?", "o": {"A": "Ferro", "B": "Rame", "C": "Argento", "D": "Alluminio"}, "c": "C"},
+    {"q": "Qual è il principale ingrediente della pizza Margherita?", "o": {"A": "Uova", "B": "Mozzarella", "C": "Prosciutto", "D": "Funghi"}, "c": "B"},
+    {"q": "Quanti colori ha l'arcobaleno?", "o": {"A": "5", "B": "6", "C": "7", "D": "8"}, "c": "C"},
+    {"q": "In quale continente si trova l'Egitto?", "o": {"A": "Asia", "B": "Europa", "C": "Africa", "D": "America"}, "c": "C"},
+    {"q": "Qual è la capitale del Giappone?", "o": {"A": "Seul", "B": "Pechino", "C": "Tokyo", "D": "Bangkok"}, "c": "C"},
+    {"q": "Quale strumento musicale ha tasti bianchi e neri?", "o": {"A": "Chitarra", "B": "Pianoforte", "C": "Violino", "D": "Flauto"}, "c": "B"},
+    {"q": "Chi è l'autore del romanzo 'I Promessi Sposi'?", "o": {"A": "Giacomo Leopardi", "B": "Giovanni Pascoli", "C": "Alessandro Manzoni", "D": "Italo Calvino"}, "c": "C"},
+    {"q": "In quale anno è iniziata la Prima Guerra Mondiale?", "o": {"A": "1914", "B": "1918", "C": "1939", "D": "1945"}, "c": "A"},
+    {"q": "Quale scienziato è famoso per la teoria della relatività?", "o": {"A": "Marie Curie", "B": "Albert Einstein", "C": "Thomas Edison", "D": "Charles Darwin"}, "c": "B"},
+    {"q": "Qual è la montagna più alta della Terra?", "o": {"A": "K2", "B": "Monte Bianco", "C": "Everest", "D": "Kilimangiaro"}, "c": "C"},
+    {"q": "Chi dipinse la 'Guernica'?", "o": {"A": "Salvador Dalì", "B": "Pablo Picasso", "C": "Claude Monet", "D": "Henri Matisse"}, "c": "B"},
+    {"q": "Qual è il fiume più lungo del mondo?", "o": {"A": "Nilo", "B": "Rio delle Amazzoni", "C": "Mississippi", "D": "Danubio"}, "c": "B"},
+    {"q": "Qual è l'unico metallo che si presenta liquido a temperatura ambiente?", "o": {"A": "Piombo", "B": "Mercurio", "C": "Stagno", "D": "Zinco"}, "c": "B"},
+    {"q": "Quale filosofo greco fu il maestro di Alessandro Magno?", "o": {"A": "Socrate", "B": "Platone", "C": "Aristotele", "D": "Epicuro"}, "c": "C"},
+    {"q": "In quale città italiana fu inventato il tricolore?", "o": {"A": "Roma", "B": "Milano", "C": "Reggio Emilia", "D": "Torino"}, "c": "C"}
 ]
 
 # --- UTILS ---
@@ -51,7 +50,7 @@ def genera_pubblico(corretta, idx):
     opzioni = ["A", "B", "C", "D"]
     voti = {corretta: random.randint(int(prob), 95)}
     rimanente = 100 - voti[corretta]
-    altre = [k for k in opzioni if k != corretta]
+    altre = [k for k in opzioni if k != correretta]
     random.shuffle(altre)
     v1 = random.randint(0, rimanente); voti[altre[0]] = v1; rimanente -= v1
     v2 = random.randint(0, rimanente); voti[altre[1]] = v2
@@ -134,8 +133,10 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data
-    # Risposta immediata per evitare caricamento infinito sul pulsante
-    if not data.startswith("ans_"): await query.answer() 
+    
+    # Risposta immediata generica per evitare caricamento infinito
+    if not data.startswith("ans_") and not data.startswith("adm_"): 
+        await query.answer() 
     
     p = players.find_one({"user_id": user_id})
     if not p and not data.startswith("adm_"): return
@@ -143,7 +144,7 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "game_start": 
         await invia_domanda(update, context, 0)
     elif data.startswith("ans_"):
-        await query.answer() # Risposta al callback per le opzioni
+        await query.answer()
         if p.get("game_over") and user_id not in ADMIN_IDS: return
         ans = data.replace("ans_", ""); q = QUESTIONS[p["current_q"]]; await pulisci_aiuti(user_id, context)
         if ans == q["c"]:
@@ -172,21 +173,40 @@ async def callback_logic(update: Update, context: ContextTypes.DEFAULT_TYPE):
             players.update_one({"user_id": user_id}, {"$push": {"temp_msg_ids": m.message_id}})
             await invia_domanda(update, context, p["current_q"])
     elif data.startswith("adm_"):
-        if user_id not in ADMIN_IDS: return
+        if user_id not in ADMIN_IDS: 
+            await query.answer("Accesso negato")
+            return
+        
+        await query.answer() # Risposta immediata admin
+
         if data == "adm_view":
-            await query.edit_message_text("⌛ *Caricamento classifica...*", parse_mode="Markdown")
-            top = list(players.find({}, {"username": 1, "current_q": 1, "user_id": 1, "_id": 0}).sort("current_q", -1).limit(50))
-            txt = "🏆 *CLASSIFICA GIOCATORI*\n\n"
-            for i, x in enumerate(top):
-                name = f"@{x.get('username')}" if x.get('username') else f"ID:{x['user_id']}"
-                txt += f"{i+1}. {name} — Risposte: *{x.get('current_q', 0)}*\n"
-            if not top: txt = "📭 Nessun dato."
-            await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
+            try:
+                await query.edit_message_text("⌛ *Caricamento classifica...*", parse_mode="Markdown")
+                # Query con timeout di 3 secondi per evitare stallo
+                top = list(players.find({}, {"username": 1, "current_q": 1, "user_id": 1, "_id": 0})
+                           .sort("current_q", DESCENDING)
+                           .limit(50)
+                           .max_time_ms(3000))
+
+                txt = "🏆 *CLASSIFICA GIOCATORI*\n\n"
+                if not top:
+                    txt = "📭 Nessun dato."
+                else:
+                    for i, x in enumerate(top):
+                        name = f"@{x.get('username')}" if x.get('username') else f"ID:{x['user_id']}"
+                        txt += f"{i+1}. {name} — Risposte: *{x.get('current_q', 0)}*\n"
+                
+                await query.edit_message_text(txt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
+            except Exception as e:
+                logging.error(f"Errore classifica: {e}")
+                await query.edit_message_text("❌ *Errore database:*\nIl server non ha risposto in tempo.", 
+                                              reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Riprova", callback_data="adm_view")]]), 
+                                              parse_mode="Markdown")
         elif data == "adm_conf_reset":
             await query.edit_message_text("⚠️ *RESET TOTALE?*\nEliminerà tutti i giocatori e la classifica.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Sì, Reset Tutto", callback_data="adm_db_drop")], [InlineKeyboardButton("❌ No", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_db_drop":
             players.drop()
-            players.create_index([("current_q", DESCENDING)]) # Ricrea l'indice dopo il drop
+            players.create_index([("current_q", DESCENDING)]) 
             await query.edit_message_text("✅ *DATABASE RESETTATO!*", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Indietro", callback_data="adm_panel")]]), parse_mode="Markdown")
         elif data == "adm_panel": await admin_panel_msg(query)
 
@@ -219,6 +239,6 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", admin_cmd))
     app.add_handler(CallbackQueryHandler(callback_logic))
-    # Creazione indice per prestazioni ottimali della classifica
+    
     players.create_index([("current_q", DESCENDING)])
     app.run_polling(drop_pending_updates=True)
